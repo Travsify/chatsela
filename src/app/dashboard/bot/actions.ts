@@ -132,6 +132,93 @@ export async function getPaymentStatus(customerPhone: string) {
   return { success: true, payment: data[0] };
 }
 
+export async function magicFillKnowledge(category: string, businessName: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  try {
+    // 🧠 AI Magic Gap Completion
+    const payload = {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an elite business growth consultant. Generate 5 highly professional, specialized facts for the category: '${category}' for a business called '${businessName}'. 
+          Focus on high-conversion selling points. 
+          Return ONLY a JSON object: { "suggestions": ["Fact 1", "Fact 2", ...] }.`
+        },
+        { role: 'user', content: `Bridge the knowledge gap for my '${category}' folder.` }
+      ],
+      response_format: { type: 'json_object' }
+    };
+
+    const aiResp = await executeChatSelaIntelligence(payload);
+    const { suggestions } = JSON.parse(aiResp.choices[0].message.content);
+
+    return { success: true, suggestions };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ─── Service Pricing Ledger ──────────────────────────────────────────────────
+
+export async function getServicesPricing() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data, error } = await supabase
+    .from('services')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true, services: data || [] };
+}
+
+export async function saveServicePrice(service: { 
+  id?: string; 
+  name: string; 
+  price: number; 
+  currency?: string; 
+  unit?: string; 
+  description?: string; 
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  if (service.id) {
+    const { error } = await supabase
+      .from('services')
+      .update({ ...service, updated_at: new Date().toISOString() })
+      .eq('id', service.id)
+      .eq('user_id', user.id);
+    if (error) return { success: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from('services')
+      .insert([{ ...service, user_id: user.id }]);
+    if (error) return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function deleteServicePrice(id: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { error } = await supabase.from('services').delete().eq('id', id).eq('user_id', user.id);
+  if (error) return { success: false, error: error.message };
+
+  return { success: true };
+}
+
 export async function getTrainingQuestions() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

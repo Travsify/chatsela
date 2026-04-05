@@ -236,8 +236,11 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true).limit(20),
     supabase.from('faqs').select('*').eq('user_id', userId).limit(20),
     supabase.from('ai_knowledge_base').select('*').eq('user_id', userId).limit(100),
+    supabase.from('services').select('*').eq('user_id', userId).eq('is_active', true),
     supabase.from('whatsapp_sessions').select('*').eq('user_id', userId).single()
   ]);
+
+  const servicesData = servicesResult.data || [];
 
   const profile = profileResult.data;
   const session = sessionResult.data;
@@ -257,6 +260,11 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     faqsResult.data || [], 
     kbResult.data || []
   );
+
+  // 💎 Structured Service Ledger Injection
+  const serviceLedgerSnippet = servicesData.length > 0 
+    ? `\n### 💎 VERIFIED SERVICE PRICING LEDGER:\n${servicesData.map(s => `- ${s.name}: ${s.currency} ${s.price} ${s.unit} (${s.description || 'Verified'})`).join('\n')}`
+    : '';
 
   // 🌍 Global Currency Context Injection
   const currencyContext = `
@@ -330,7 +338,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   try {
     let payload: any = {
       model: 'gpt-4o-mini',
-      messages: [{ role: 'system', content: systemPrompt + "\n" + currencyContext }, ...chatMessages],
+      messages: [{ role: 'system', content: systemPrompt + serviceLedgerSnippet + "\n" + currencyContext }, ...chatMessages],
       tools: tools,
       tool_choice: 'auto'
     };

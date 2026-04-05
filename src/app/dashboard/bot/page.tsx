@@ -12,10 +12,11 @@ import {
   submitTrainingAnswer,
   scrapeWebsiteToKnowledgeBase,
   getMerchantIntegrations,
-  saveMerchantIntegrations,
-  generateBotConfig
+  generateBotConfig, 
+  magicFillKnowledge 
 } from './actions';
 import VoiceTraining from '@/components/VoiceTraining';
+import PricingLedger from './PricingLedger';
 import { createClient } from '@/utils/supabase/client';
 
 // ── Toggle switch ─────────────────────────────────────────────────────────────
@@ -219,11 +220,24 @@ export default function BotConfigPage() {
     setScrapeResult(`✅ Voice Intelligence Transcribed. Please review folders.`);
     
     if (insts && insts.length > 0) {
-      // 🧠 Self-Learning: Apply behavioral instructions immediately to the bot prompt
       const newPrompt = `${insts.join('\n')}\n\n${prompt}`;
       setPrompt(newPrompt);
       await saveBotSettings(botName, newPrompt, welcomeMessage, menuOptions);
     }
+  };
+
+  const [activeTab, setActiveTab] = useState<'products' | 'services' | 'iq'>('services');
+
+  const handleMagicFill = async (category: string) => {
+    setIsGenerating(true);
+    const res = await magicFillKnowledge(category, botName);
+    if (res.success && res.suggestions) {
+       setCategorizedDrafts({ ...categorizedDrafts, [category]: res.suggestions });
+       setScrapeResult(`✨ Magic Bridge Complete: Suggested 5 facts for ${category}.`);
+    } else {
+       alert(`Magic Fill failed: ${res.error}`);
+    }
+    setIsGenerating(false);
   };
 
   const addDraft = (cat: string) => {
@@ -404,46 +418,94 @@ export default function BotConfigPage() {
           </div>
         </section>
 
-        {/* ── Interactive Training ── */}
-        <section style={{ ...commonSectionStyle, borderLeft: '4px solid #f59e0b' }}>
-           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-             <h3 style={{ fontSize: '18px', fontWeight: 700 }}>🎓 Fortify Intelligence</h3>
-             <button onClick={handleGetTraining} disabled={isTraining} style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>
-               {isTraining ? 'Analyzing...' : 'Find Knowledge Gaps'}
-             </button>
-           </div>
-           
-           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '20px', marginBottom: '30px' }}>
-             <VoiceTraining onTranscription={(cats, trans) => handleVoiceTranscription(cats, trans)} />
-             <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-               <h5 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', color: 'rgba(255,255,255,0.6)' }}>🧠 Self-Learning Lab</h5>
-               <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>
-                 Your bot is monitoring conversations and identifying patterns. Behavioral instructions detected via voice are automatically injected into the bot's system brain.
-               </p>
-               <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00ff88' }} />
-                    <span>Real-time Quote Protocol: Active ✅</span>
-                 </div>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00ff88' }} />
-                    <span>Currency Context: Synced ✅</span>
-                 </div>
-               </div>
-             </div>
-           </div>
+        {/* ── 🧠 Intelligence Command Center ── */}
+        <section style={{ ...commonSectionStyle, borderLeft: '4px solid var(--accent-primary)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 800 }}>🤖 Deep Training Lab</h3>
+            <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '12px' }}>
+              {(['services', 'products', 'iq'] as const).map(tab => (
+                <button 
+                  key={tab} 
+                  onClick={() => setActiveTab(tab)}
+                  style={{ 
+                    padding: '8px 16px', 
+                    borderRadius: '8px', 
+                    border: 'none', 
+                    fontSize: '12px', 
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: activeTab === tab ? 'var(--accent-primary)' : 'transparent',
+                    color: activeTab === tab ? '#000' : 'rgba(255,255,255,0.5)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {tab.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
 
-           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-             {trainingQuestions.map((q, idx) => (
-                <div key={idx} style={{ padding: '20px', background: 'rgba(245,158,11,0.05)', borderRadius: '16px', border: '1px solid rgba(245,158,11,0.1)' }}>
-                  <p style={{ fontWeight: 600, color: '#f59e0b', marginBottom: '12px' }}>❓ {q}</p>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <input type="text" value={trainingAnswers[idx] || ''} onChange={(e) => setTrainingAnswers(p => ({ ...p, [idx]: e.target.value }))} style={INPUT_STYLE} placeholder="Your answer..." />
-                    <button onClick={() => handleSaveTraining(idx)} style={{ background: '#00ff88', color: '#000', border: 'none', padding: '8px 16px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer' }}>Save</button>
-                  </div>
+          {activeTab === 'services' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <PricingLedger />
+              <div style={{ padding: '20px', background: 'rgba(0,168,132,0.05)', borderRadius: '20px', border: '1px solid rgba(0,168,132,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                 <div>
+                   <h5 style={{ fontWeight: 700, fontSize: '14px', color: 'var(--accent-primary)' }}>✨ Magic Service Fill</h5>
+                   <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>Let AI analyze your business and suggest professional service rates and descriptions.</p>
+                 </div>
+                 <button onClick={() => handleMagicFill('pricing')} disabled={isGenerating} className="glow-btn" style={{ padding: '8px 20px', fontSize: '12px' }}>
+                   {isGenerating ? '⌛ Processing...' : 'Generate Rates ✨'}
+                 </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'iq' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'flex', gap: '15px' }}>
+                 <button onClick={() => handleMagicFill('about')} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Generate "About" Facts ✨</button>
+                 <button onClick={() => handleMagicFill('features')} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Generate "Features" ✨</button>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <VoiceTraining onTranscription={(cats, trans) => handleVoiceTranscription(cats, trans)} />
+                <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <h5 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', color: 'rgba(255,255,255,0.6)' }}>🧠 Self-Learning Hub</h5>
+                  <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>Your bot learns from every interaction. Instructions detected via voice or magic-fill are applied directly to the core prompt.</p>
                 </div>
-             ))}
-           </div>
+              </div>
+            </div>
+          )}
+
+          {/* 📂 Categorized Drafts Review (Unified UI) */}
+          {categorizedDrafts && (
+            <div style={{ marginTop: '30px', padding: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ fontSize: '16px', fontWeight: 800 }}>🛡️ Intelligence Review: {draftSourceUrl}</h4>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={handleSaveDrafts} disabled={isSavingDrafts} style={{ background: '#00ff88', color: '#000', border: 'none', padding: '10px 24px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer' }}>{isSavingDrafts ? '⌛ Saving...' : 'Finalize Intelligence & Go Live 🚀'}</button>
+                  <button onClick={() => setCategorizedDrafts(null)} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>Discard</button>
+                </div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '20px' }}>
+                {Object.entries(categorizedDrafts).map(([category, facts]) => (
+                  <div key={category} className="folder" style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', borderTop: '4px solid var(--accent-primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--accent-primary)' }}>📁 {category}</span>
+                      <button onClick={() => addDraft(category)} style={{ background: 'none', border: 'none', color: '#00ff88', fontSize: '18px', cursor: 'pointer' }}>+</button>
+                    </div>
+                    {facts.map((f, i) => (
+                      <div key={i} style={{ fontSize: '11px', marginBottom: '8px', padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', display: 'flex', gap: '8px' }}>
+                        <span style={{ color: '#00ff88' }}>•</span>
+                        <p style={{ flex: 1 }}>{f}</p>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <button className="glow-btn" style={{ padding: '16px 40px', width: 'fit-content' }} onClick={handleSaveAll} disabled={isSaving}>
