@@ -130,7 +130,11 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
       body: JSON.stringify({ url: targetUrl, formats: ['markdown'] })
     });
 
-    if (!homeResp.ok) throw new Error(`Firecrawl Error: ${homeResp.status}`);
+    if (!homeResp.ok) {
+      const respBody = await homeResp.text();
+      console.error(`🔥 [Firecrawl Error] Status: ${homeResp.status}, Body: ${respBody}`);
+      throw new Error(`Firecrawl Error: ${homeResp.status} - ${respBody.substring(0, 50)}`);
+    }
     const homeData = await homeResp.json();
     const homeMarkdown = homeData.data?.markdown || '';
 
