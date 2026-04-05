@@ -60,20 +60,15 @@ export default function BotConfigPage() {
   const [newFact, setNewFact]     = useState('');
   const [isAddingFact, setIsAddingFact] = useState(false);
 
-  // Integrations state
-  const [bookingUrl, setBookingUrl] = useState('');
-  const [stripeSecret, setStripeSecret] = useState('');
-  const [paystackSecret, setPaystackSecret] = useState('');
-  const [hasStripe, setHasStripe] = useState(false);
-  const [hasPaystack, setHasPaystack] = useState(false);
-  const [isSavingIntegrations, setIsSavingIntegrations] = useState(false);
-
   // Scraper & Magic Setup
   const [magicInput, setMagicInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [scrapingPhase, setScrapingPhase] = useState<string | null>(null);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
+  const [categorizedDrafts, setCategorizedDrafts] = useState<Record<string, string[]> | null>(null);
+  const [draftSourceUrl, setDraftSourceUrl] = useState('');
+  const [isSavingDrafts, setIsSavingDrafts] = useState(false);
 
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -99,13 +94,6 @@ export default function BotConfigPage() {
       
       const kb = await getKnowledgeBaseDocs();
       if (kb.success) setKbDocs(kb.documents || []);
-
-      const ints = await getMerchantIntegrations();
-      if (ints.success) {
-        setBookingUrl(ints.integrations.booking_url);
-        setHasStripe(ints.integrations.has_stripe);
-        setHasPaystack(ints.integrations.has_paystack);
-      }
     })();
   }, []);
 
@@ -115,25 +103,6 @@ export default function BotConfigPage() {
     setSaved(true);
     setIsSaving(false);
     setTimeout(() => setSaved(false), 3000);
-  };
-
-  const handleSaveIntegrations = async () => {
-    setIsSavingIntegrations(true);
-    const res = await saveMerchantIntegrations({ 
-      booking_url: bookingUrl, 
-      stripe_secret: stripeSecret || undefined, 
-      paystack_secret: paystackSecret || undefined 
-    });
-    if (res.success) {
-      setStripeSecret('');
-      setPaystackSecret('');
-      const ints = await getMerchantIntegrations();
-      if (ints.success) {
-        setHasStripe(ints.integrations.has_stripe);
-        setHasPaystack(ints.integrations.has_paystack);
-      }
-    }
-    setIsSavingIntegrations(false);
   };
 
   const handleMagicSetup = async () => {
@@ -206,9 +175,9 @@ export default function BotConfigPage() {
     try {
       const res = await scrapeWebsiteToKnowledgeBase(magicInput);
       if (res.success) {
-        setScrapeResult(`✅ Intelligence Loaded: Extracted ${res.count} facts.`);
-        const kb = await getKnowledgeBaseDocs();
-        if (kb.success) setKbDocs(kb.documents || []);
+        setCategorizedDrafts(res.categorizedFacts);
+        setDraftSourceUrl(res.targetUrl);
+        setScrapeResult(`✅ Intelligence Extracted. Please review folders below.`);
       } else {
         setScrapeResult(`❌ Error: ${res.error}`);
       }
@@ -217,6 +186,34 @@ export default function BotConfigPage() {
       setScrapingPhase(null);
       setIsScraping(false);
     }
+  };
+
+  const handleSaveDrafts = async () => {
+    if (!categorizedDrafts) return;
+    setIsSavingDrafts(true);
+    const { saveCategorizedIntelligence } = await import('./actions');
+    const res = await saveCategorizedIntelligence(categorizedDrafts, draftSourceUrl);
+    if (res.success) {
+      setCategorizedDrafts(null);
+      setScrapeResult(`✅ ${res.count} Facts committed to Knowledge Vault.`);
+      const kb = await getKnowledgeBaseDocs();
+      if (kb.success) setKbDocs(kb.documents || []);
+    }
+    setIsSavingDrafts(false);
+  };
+
+  const updateDraft = (cat: string, idx: number, val: string) => {
+    if (!categorizedDrafts) return;
+    const newDrafts = { ...categorizedDrafts };
+    newDrafts[cat][idx] = val;
+    setCategorizedDrafts(newDrafts);
+  };
+
+  const removeDraft = (cat: string, idx: number) => {
+    if (!categorizedDrafts) return;
+    const newDrafts = { ...categorizedDrafts };
+    newDrafts[cat].splice(idx, 1);
+    setCategorizedDrafts(newDrafts);
   };
 
   const handleGetTraining = async () => {
@@ -252,7 +249,7 @@ export default function BotConfigPage() {
         <section style={commonSectionStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
             <span style={{ fontSize: '20px' }}>🔥</span>
-            <h3 style={{ fontSize: '18px', fontWeight: 700 }}>God-Mode Scraper (God Mode)</h3>
+            <h3 style={{ fontSize: '18px', fontWeight: 700 }}>God-Mode Scraper</h3>
           </div>
           <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px' }}>Enter your website URL. ChatSela will crawl your entire site (pricing, services, features) to build 100% factual business IQ.</p>
           <div style={{ display: 'flex', gap: '12px' }}>
@@ -271,37 +268,53 @@ export default function BotConfigPage() {
             </div>
           )}
           {scrapeResult && <p style={{ marginTop: '12px', fontSize: '13px', color: scrapeResult.startsWith('✅') ? '#00ff88' : '#ef4444' }}>{scrapeResult}</p>}
+
+          {/* 📂 Categorized Review Section */}
+          {categorizedDrafts && (
+            <div style={{ marginTop: '30px', animation: 'fadeIn 0.5s ease-out' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '20px', color: 'var(--accent-primary)' }}>🗃️ Review Scraped Intelligence</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {Object.entries(categorizedDrafts).map(([cat, facts]) => (
+                  <div key={cat} className="glass" style={{ padding: '20px', borderRadius: '16px' }}>
+                    <h5 style={{ textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      📁 {cat} <span style={{ color: 'var(--accent-primary)', fontSize: '10px' }}>({facts.length} facts)</span>
+                    </h5>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {facts.map((f, i) => (
+                        <div key={i} style={{ display: 'flex', gap: '10px' }}>
+                          <input 
+                            type="text" 
+                            value={f} 
+                            onChange={(e) => updateDraft(cat, i, e.target.value)} 
+                            style={{ ...INPUT_STYLE, background: 'rgba(255,255,255,0.02)' }} 
+                          />
+                          <button onClick={() => removeDraft(cat, i)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button 
+                onClick={handleSaveDrafts} 
+                disabled={isSavingDrafts}
+                className="glow-btn" 
+                style={{ marginTop: '24px', width: '100%' }}
+              >
+                {isSavingDrafts ? '⌛ Committing Facts...' : '✅ Approve & Store in Knowledge Vault'}
+              </button>
+            </div>
+          )}
         </section>
 
-        {/* ── Payments & Calendar Integrations ── */}
-        <section style={{ ...commonSectionStyle, borderLeft: '4px solid #00ff88' }}>
+        <section style={{ ...commonSectionStyle, opacity: 0.6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-            <span style={{ fontSize: '20px' }}>💳</span>
-            <h3 style={{ fontSize: '18px', fontWeight: 700 }}>Payments & Appointments</h3>
+            <span style={{ fontSize: '20px' }}>🛡️</span>
+            <h3 style={{ fontSize: '18px', fontWeight: 700 }}>System Integrations</h3>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div>
-              <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>📅 Custom Booking URL (Cal.com / Calendly)</label>
-              <input type="text" value={bookingUrl} onChange={(e) => setBookingUrl(e.target.value)} placeholder="https://cal.com/your-business" style={INPUT_STYLE} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              <div>
-                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                  Stripe Secret {hasStripe && <span style={{ color: '#00ff88' }}>(Active ✅)</span>}
-                </label>
-                <input type="password" value={stripeSecret} onChange={(e) => setStripeSecret(e.target.value)} placeholder="sk_test_..." style={INPUT_STYLE} />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                  Paystack Secret {hasPaystack && <span style={{ color: '#00ff88' }}>(Active ✅)</span>}
-                </label>
-                <input type="password" value={paystackSecret} onChange={(e) => setPaystackSecret(e.target.value)} placeholder="sk_test_..." style={INPUT_STYLE} />
-              </div>
-            </div>
-            <button onClick={handleSaveIntegrations} disabled={isSavingIntegrations} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '12px 24px', borderRadius: '12px', fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-start' }}>
-              {isSavingIntegrations ? '⌛ Saving...' : '💾 Save Integrations'}
-            </button>
-          </div>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
+            Payment gateways and calendar links are now managed under <a href="/dashboard/settings" style={{ color: 'var(--accent-primary)', fontWeight: 600, textDecoration: 'underline' }}>Settings</a>.
+          </p>
         </section>
 
         {/* ── Knowledge Vault ── */}
@@ -328,7 +341,7 @@ export default function BotConfigPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
             {kbDocs.map(doc => (
               <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <p style={{ fontSize: '14px', lineHeight: '1.5' }}>{doc.content}</p>
+                <p style={{ fontSize: '14px', lineHeight: '1.5' }}><span style={{ color: 'var(--accent-primary)', fontSize: '10px', textTransform: 'uppercase', marginRight: '8px' }}>[{doc.category || 'general'}]</span>{doc.content}</p>
                 <button onClick={() => handleDeleteFact(doc.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
               </div>
             ))}
@@ -387,8 +400,8 @@ export default function BotConfigPage() {
            </div>
 
            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '300px' }}>
-             <div style={{ background: '#202c33', padding: '12px 16px', borderRadius: '0 16px 16px 16px', fontSize: '14px', maxWidth: '85%' }}>{welcomeMessage}</div>
-             {menuOptions.map((o, i) => o && <div key={i} style={{ padding: '12px', background: 'rgba(0,168,132,0.1)', color: '#00ff88', borderRadius: '12px', textAlign: 'center', fontSize: '13px', border: '1px solid rgba(0,168,132,0.3)', fontWeight: 600 }}>{o}</div>)}
+              <div style={{ background: '#202c33', padding: '12px 16px', borderRadius: '0 16px 16px 16px', fontSize: '14px', maxWidth: '85%' }}>{welcomeMessage}</div>
+              {menuOptions.map((o, i) => o && <div key={i} style={{ padding: '12px', background: 'rgba(0,168,132,0.1)', color: '#00ff88', borderRadius: '12px', textAlign: 'center', fontSize: '13px', border: '1px solid rgba(0,168,132,0.3)', fontWeight: 600 }}>{o}</div>)}
            </div>
 
            <div style={{ marginTop: '24px', padding: '16px', background: 'rgba(0,255,136,0.05)', borderRadius: '16px', border: '1px solid rgba(0,255,136,0.1)' }}>
@@ -396,10 +409,6 @@ export default function BotConfigPage() {
              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>KB Status</span>
                <span style={{ fontSize: '14px', fontWeight: 700 }}>{kbDocs.length} Verified Facts</span>
-             </div>
-             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-               <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>Integrations</span>
-               <span style={{ fontSize: '12px', color: '#00ff88' }}>{ (hasStripe ? 1 : 0) + (hasPaystack ? 1 : 0) + (bookingUrl ? 1 : 0) } / 3 Active</span>
              </div>
            </div>
         </div>

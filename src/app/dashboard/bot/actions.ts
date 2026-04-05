@@ -171,27 +171,20 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
     const payload = {
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: `Extract EVERY CRITICAL FACT from the website. Return JSON object: { "facts": ["...", "..."] }.` },
+        { 
+          role: 'system', 
+          content: `Extract EVERY CRITICAL FACT from the website. Categorize each fact into one of: 'about', 'products', 'services', 'features', 'pricing'. 
+          Return ONLY a JSON object: { "categorizedFacts": { "about": ["..."], "products": ["..."], "services": ["..."], "features": ["..."], "pricing": ["..."] } }.` 
+        },
         { role: 'user', content: `Website Intelligence Feed:\n\n${aggregatedMarkdown.substring(0, 15000)}` }
       ],
       response_format: { type: "json_object" }
     };
 
     const aiResp = await executeChatSelaIntelligence(payload);
-    const { facts } = JSON.parse(aiResp.choices[0].message.content);
+    const { categorizedFacts } = JSON.parse(aiResp.choices[0].message.content);
 
-    if (facts?.length > 0) {
-      const inserts = facts.map((f: string) => ({
-        user_id: user.id,
-        content: f,
-        source_type: 'url',
-        source_url: targetUrl,
-        metadata: { added_at: new Date().toISOString(), depth: 'god-mode' }
-      }));
-      await supabase.from('ai_knowledge_base').insert(inserts);
-    }
-
-    return { success: true, count: facts?.length || 0, linksScraped: [targetUrl, ...targetLinks] };
+    return { success: true, categorizedFacts: categorizedFacts || {}, linksScraped: [targetUrl, ...targetLinks], targetUrl };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -303,4 +296,31 @@ export async function deleteKnowledgeFact(id: string) {
   if (!user) return { success: false, error: 'Unauthorized' };
   await supabase.from('ai_knowledge_base').delete().eq('id', id).eq('user_id', user.id);
   return { success: true };
+}
+
+export async function saveCategorizedIntelligence(categorizedFacts: Record<string, string[]>, sourceUrl: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const inserts: any[] = [];
+  Object.entries(categorizedFacts).forEach(([category, facts]) => {
+    facts.forEach(f => {
+      inserts.push({
+        user_id: user.id,
+        content: f,
+        category: category,
+        source_type: 'url',
+        source_url: sourceUrl,
+        metadata: { added_at: new Date().toISOString(), depth: 'god-mode' }
+      });
+    });
+  });
+
+  if (inserts.length > 0) {
+    const { error } = await supabase.from('ai_knowledge_base').insert(inserts);
+    if (error) return { success: false, error: error.message };
+  }
+
+  return { success: true, count: inserts.length };
 }
