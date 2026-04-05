@@ -17,11 +17,12 @@ export async function processDocumentUpload(base64Data: string, fileName: string
 
     if (fileName.endsWith('.pdf')) {
       try {
-        const pdf = require('pdf-parse');
-        const pdfData = await pdf(buffer);
-        textContent = pdfData.text || '';
+        const { getDocumentProxy, extractText } = await import('unpdf');
+        const pdf = await getDocumentProxy(buffer);
+        const { text } = await extractText(pdf);
+        textContent = Array.isArray(text) ? text.join('\n') : (text || '');
       } catch (pdfErr: any) {
-        console.error(`🔥 [PDF Parse Error]:`, pdfErr.message);
+        console.error(`🔥 [PDF Extraction Error]:`, pdfErr.message);
         return { success: false, error: `Failed to extract text from PDF: ${pdfErr.message}` };
       }
     } else {
@@ -54,7 +55,82 @@ export async function processDocumentUpload(base64Data: string, fileName: string
   }
 }
 
-// ─── Interactive AI Training ─────────────────────────────────────────────────
+export async function processVoiceTraining(base64Audio: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  try {
+    const buffer = Buffer.from(base64Audio, 'base64');
+    
+    // 🎙️ Whisper Transcription (Injected Key for Unicorn Grade)
+    const formData = new FormData();
+    // Wrap the buffer in an array for the Blob constructor
+    formData.append('file', new Blob([buffer], { type: 'audio/webm' }), 'training.webm');
+    formData.append('model', 'whisper-1');
+
+    const whisperResp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: formData
+    });
+
+    if (!whisperResp.ok) {
+      const errBody = await whisperResp.text();
+      throw new Error(`Whisper Error: ${whisperResp.status} - ${errBody}`);
+    }
+    const { text: transcript } = await whisperResp.json();
+
+    // 📂 Categorized Extraction (Same as Scraper/PDF)
+    const payload = {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an elite business analyst. Extract EVERY critical fact from this vocal recording. 
+          Also, detect if there are any behavioral INSTRUCTIONS (directives like "talk like this" or "do X").
+          Categorize each fact into one of: 'about', 'products', 'services', 'features', 'pricing'. 
+          Return ONLY a JSON object: { 
+            "categorizedFacts": { "about": ["..."], "products": ["..."], "services": ["..."], "features": ["..."], "pricing": ["..."] },
+            "instructions": ["... list of directives found ..."]
+          }.`
+        },
+        { role: 'user', content: `Verbal Intelligence Feed:\n\n${transcript}` }
+      ],
+      response_format: { type: 'json_object' }
+    };
+
+    const aiResp = await executeChatSelaIntelligence(payload);
+    const result = JSON.parse(aiResp.choices[0].message.content);
+
+    return { 
+      success: true, 
+      categorizedFacts: result.categorizedFacts || {}, 
+      instructions: result.instructions || [],
+      transcript 
+    };
+  } catch (err: any) {
+    console.error(`🔥 [Voice Training] Failed:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function getPaymentStatus(customerPhone: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('customer_phone', customerPhone)
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (!data?.length) return { success: false, error: 'No recent payments found.' };
+  return { success: true, payment: data[0] };
+}
 
 export async function getTrainingQuestions() {
   const supabase = await createClient();
@@ -210,7 +286,7 @@ export async function getMerchantIntegrations() {
 
   const { data } = await supabase
     .from('profiles')
-    .select('booking_url, stripe_secret_enc, paystack_secret_enc')
+    .select('booking_url, stripe_secret_enc, paystack_secret_enc, base_currency, target_currency, exchange_rate, manual_rate_active')
     .eq('id', user.id)
     .single();
 
@@ -219,7 +295,11 @@ export async function getMerchantIntegrations() {
     integrations: {
       booking_url: data?.booking_url || '',
       has_stripe: !!data?.stripe_secret_enc,
-      has_paystack: !!data?.paystack_secret_enc
+      has_paystack: !!data?.paystack_secret_enc,
+      base_currency: data?.base_currency || 'USD',
+      target_currency: data?.target_currency || 'NGN',
+      exchange_rate: data?.exchange_rate || 1600.0,
+      manual_rate_active: data?.manual_rate_active ?? true
     } 
   };
 }
@@ -227,7 +307,11 @@ export async function getMerchantIntegrations() {
 export async function saveMerchantIntegrations(settings: { 
   booking_url?: string; 
   stripe_secret?: string; 
-  paystack_secret?: string; 
+  paystack_secret?: string;
+  base_currency?: string;
+  target_currency?: string;
+  exchange_rate?: number;
+  manual_rate_active?: boolean;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -237,6 +321,11 @@ export async function saveMerchantIntegrations(settings: {
   if (settings.booking_url !== undefined) update.booking_url = settings.booking_url;
   if (settings.stripe_secret) update.stripe_secret_enc = encrypt(settings.stripe_secret);
   if (settings.paystack_secret) update.paystack_secret_enc = encrypt(settings.paystack_secret);
+  
+  if (settings.base_currency !== undefined) update.base_currency = settings.base_currency;
+  if (settings.target_currency !== undefined) update.target_currency = settings.target_currency;
+  if (settings.exchange_rate !== undefined) update.exchange_rate = settings.exchange_rate;
+  if (settings.manual_rate_active !== undefined) update.manual_rate_active = settings.manual_rate_active;
 
   const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
   if (error) return { success: false, error: error.message };

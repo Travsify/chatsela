@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { buildSystemPrompt } from './prompts';
+import { getPaymentStatus } from '@/app/dashboard/bot/actions';
 
 const WHAPI_BASE_URL = 'https://gate.whapi.cloud';
 const CHATSZELA_CORE_KEY = process.env.OPENAI_API_KEY;
@@ -164,6 +165,14 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
   } else if (name === 'fetch_tracking') {
     const status = await fetchExternalTracking(supabase, userId, args.tracking_id);
     result = status || `No tracking info found for ID ${args.tracking_id}.`;
+  } else if (name === 'verify_payment') {
+    const res = await getPaymentStatus(sender);
+    if (res.success && res.payment) {
+      const p = res.payment;
+      result = `SUCCESS: I've verified the payment. Status: *${p.status.toUpperCase()}*. Amount: *${p.currency} ${p.amount}*. Reference: ${p.reference}.`;
+    } else {
+      result = `FAILURE: I could not find a confirmed payment for your phone number (${sender}). Please ensure you've completed the checkout!`;
+    }
   }
 
   return {
@@ -242,9 +251,35 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   }));
   chatMessages.push({ role: 'user', content: message });
 
-  const systemPrompt = buildSystemPrompt(profile?.business_name || 'Business', productsResult.data || [], faqsResult.data || [], kbResult.data || []);
+  const systemPrompt = buildSystemPrompt(
+    profile?.business_name || 'Business', 
+    productsResult.data || [], 
+    faqsResult.data || [], 
+    kbResult.data || []
+  );
+
+  // 🌍 Global Currency Context Injection
+  const currencyContext = `
+  ### 🌍 GLOBAL CURRENCY CONTEXT:
+  - Base Currency: ${profile?.base_currency || 'USD'}
+  - Target/Local Currency: ${profile?.target_currency || 'NGN'}
+  - Exchange Rate (1 ${profile?.base_currency || 'USD'} = ${profile?.exchange_rate || 1600.0} ${profile?.target_currency || 'NGN'})
+  
+  ### 🦁 THE INTERACTIVITY DIRECTIVE (MANDATORY):
+  - For ANY shipping or logistics quote, you MUST ask for: 1. Weight, 2. Dimensions, 3. Pickup City, 4. Destination City/Region. 
+  - Never give a final price without these. 
+  - Be THRILLING but ACCURATE. 🛡️
+  `.trim();
 
   const tools = [
+    {
+      type: 'function',
+      function: {
+        name: 'verify_payment',
+        description: 'Checks if the customer has a successful payment in the system.',
+        parameters: { type: 'object', properties: {} }
+      }
+    },
     {
       type: 'function',
       function: {
@@ -295,7 +330,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   try {
     let payload: any = {
       model: 'gpt-4o-mini',
-      messages: [{ role: 'system', content: systemPrompt }, ...chatMessages],
+      messages: [{ role: 'system', content: systemPrompt + "\n" + currencyContext }, ...chatMessages],
       tools: tools,
       tool_choice: 'auto'
     };
