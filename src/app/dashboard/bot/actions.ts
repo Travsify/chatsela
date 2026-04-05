@@ -16,9 +16,14 @@ export async function processDocumentUpload(base64Data: string, fileName: string
     let textContent = '';
 
     if (fileName.endsWith('.pdf')) {
-      const pdf = await (import('pdf-parse') as any);
-      const pdfData = await pdf(buffer);
-      textContent = pdfData.text;
+      try {
+        const pdf = require('pdf-parse');
+        const pdfData = await pdf(buffer);
+        textContent = pdfData.text || '';
+      } catch (pdfErr: any) {
+        console.error(`🔥 [PDF Parse Error]:`, pdfErr.message);
+        return { success: false, error: `Failed to extract text from PDF: ${pdfErr.message}` };
+      }
     } else {
       textContent = buffer.toString('utf-8');
     }

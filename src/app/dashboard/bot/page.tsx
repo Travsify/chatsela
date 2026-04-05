@@ -141,16 +141,21 @@ export default function BotConfigPage() {
     setScrapeResult(null);
     const reader = new FileReader();
     reader.onload = async () => {
-      const base64 = (reader.result as string).split(',')[1];
-      const res = await processDocumentUpload(base64, file.name);
-      if (res.success) {
-        setCategorizedDrafts(res.categorizedFacts);
-        setDraftSourceUrl(`Document: ${res.fileName}`);
-        setScrapeResult(`✅ PDF Intelligence Extracted. Please review folders.`);
-      } else {
-        setScrapeResult(`❌ Error: ${res.error}`);
+      try {
+        const base64 = (reader.result as string).split(',')[1];
+        const res = await processDocumentUpload(base64, file.name);
+        if (res.success) {
+          setCategorizedDrafts(res.categorizedFacts);
+          setDraftSourceUrl(`Document: ${res.fileName}`);
+          setScrapeResult(`✅ PDF Intelligence Extracted. Please review folders.`);
+        } else {
+          setScrapeResult(`❌ Error: ${res.error}`);
+        }
+      } catch (err: any) {
+        setScrapeResult(`❌ Error: Failed to process document. Please try again.`);
+      } finally {
+        setIsUploading(false);
       }
-      setIsUploading(false);
     };
     reader.readAsDataURL(file);
   };
