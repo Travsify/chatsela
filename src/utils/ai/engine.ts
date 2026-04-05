@@ -250,7 +250,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
 
   try {
     let payload = {
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-5-sonnet-20240620',
       max_tokens: 1024,
       system: systemPrompt,
       messages: chatMessages,
