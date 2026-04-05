@@ -235,7 +235,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     supabase.from('profiles').select('*').eq('id', userId).single(),
     supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true).limit(20),
     supabase.from('faqs').select('*').eq('user_id', userId).limit(20),
-    supabase.from('ai_knowledge_base').select('*').eq('user_id', userId).limit(10),
+    supabase.from('ai_knowledge_base').select('*').eq('user_id', userId).limit(100),
     supabase.from('whatsapp_sessions').select('*').eq('user_id', userId).single()
   ]);
 
