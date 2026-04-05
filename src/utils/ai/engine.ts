@@ -1,10 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { anthropic } from '@ai-sdk/anthropic';
-import { generateText, generateObject, tool } from 'ai';
-import { z } from 'zod';
 import { buildSystemPrompt } from './prompts';
 
 const WHAPI_BASE_URL = 'https://gate.whapi.cloud';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // ═══════════════════════════════════════════════════════
 // External Integration Helpers
@@ -49,10 +47,6 @@ async function fetchExternalTracking(supabase: any, userId: string, trackingId: 
   return null;
 }
 
-// ═══════════════════════════════════════════════════════
-// Automated Checkout Link Generation
-// ═══════════════════════════════════════════════════════
-
 async function generateCheckoutLink(supabase: any, userId: string, amount: number, customerPhone: string, channelId: string): Promise<string | null> {
   const { data: profile } = await supabase
     .from('profiles')
@@ -65,7 +59,6 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
   try {
     const { decrypt } = await import('../encryption');
     
-    // 1. Paystack Logic
     if (profile.paystack_secret_enc && profile.payment_currency === 'NGN') {
       const secret = decrypt(profile.paystack_secret_enc);
       const response = await fetch('https://api.paystack.co/transaction/initialize', {
@@ -78,7 +71,6 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
           email: `customer_${customerPhone}@chatsela.com`,
           amount: Math.round(amount * 100),
           currency: 'NGN',
-          metadata: { userId, customerPhone, channelId, source: 'whatsapp_bot' }
         }),
       });
 
@@ -86,7 +78,6 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
       if (data.status) return data.data.authorization_url;
     }
 
-    // 2. Stripe Logic
     if (profile.stripe_secret_enc) {
       const secret = decrypt(profile.stripe_secret_enc);
       const sessionBody = new URLSearchParams();
@@ -98,10 +89,6 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
       sessionBody.append('mode', 'payment');
       sessionBody.append('success_url', `${process.env.NEXT_PUBLIC_SITE_URL}/success`);
       sessionBody.append('cancel_url', `${process.env.NEXT_PUBLIC_SITE_URL}/canceled`);
-      sessionBody.append('metadata[userId]', userId);
-      sessionBody.append('metadata[customerPhone]', customerPhone);
-      sessionBody.append('metadata[channelId]', channelId);
-      sessionBody.append('metadata[source]', 'whatsapp_bot');
 
       const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
         method: 'POST',
@@ -123,29 +110,71 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
 }
 
 // ═══════════════════════════════════════════════════════
-// AI Insights & Lead Sentiment (Background)
+// Direct Anthropic API Call (No Magic)
+// ═══════════════════════════════════════════════════════
+
+async function callClaudeDirectly(payload: any) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is missing.');
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Claude API Error (${resp.status}): ${err}`);
+  }
+
+  return await resp.json();
+}
+
+async function handleToolExecution(toolUse: any, supabase: any, userId: string, sender: string, channelId: string, profile: any) {
+  const { name, input, id } = toolUse;
+  console.log(`🛠️ [Tool] Executing ${name} with ID: ${id}`);
+
+  let result = '';
+
+  if (name === 'generate_checkout_link') {
+    const link = await generateCheckoutLink(supabase, userId, input.amount, sender, channelId);
+    result = link ? `SUCCESS: Generated link: ${link}` : `FAILURE: Could not generate link.`;
+  } else if (name === 'book_appointment') {
+    const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
+    result = `Link: https://cal.com/${calId}`;
+  } else if (name === 'fetch_tracking') {
+    const status = await fetchExternalTracking(supabase, userId, input.tracking_id);
+    result = status || `No tracking info found for ID ${input.tracking_id}.`;
+  }
+
+  return {
+    type: 'tool_result',
+    tool_use_id: id,
+    content: result
+  };
+}
+
+// ═══════════════════════════════════════════════════════
+// Background Insight Generator (Direct Call)
 // ═══════════════════════════════════════════════════════
 
 async function generateChatInsight(supabase: any, userId: string, phone: string, history: any[]) {
   try {
-    const { object } = await generateObject({
-      model: anthropic('claude-3-5-sonnet-20241022'),
-      system: `You are an expert sales analyst. Analyze the following chat history between a business and a customer. 
-      Extract the core summary, customer sentiment, their intent, potential deal value, and the very next step the merchant should take.`,
-      schema: z.object({
-        summary: z.string().describe('1-sentence summary of the conversation.'),
-        sentiment: z.enum(['positive', 'neutral', 'negative']).describe('Customer sentiment.'),
-        intent: z.enum(['inquiry', 'purchase', 'support']).describe('Primary customer goal.'),
-        valueEstimate: z.number().describe('Estimated dollar/currency value of the proposed/discussed deal. 0 if not a sale.'),
-        nextStep: z.string().describe('One clear actionable instruction for the merchant.')
-      }),
-      messages: history.map(h => ({
-        role: h.role === 'assistant' ? 'assistant' : 'user',
-        content: h.content
-      }))
-    });
+    const messages = history.map(h => ({ role: h.role, content: h.content }));
+    const payload = {
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 500,
+      system: `Analyze chat history. Respond ONLY with a JSON object: { "summary": "...", "sentiment": "positive|neutral|negative", "intent": "inquiry|purchase|support", "valueEstimate": number, "nextStep": "..." }`,
+      messages: [...messages, { role: 'user', content: 'Extract conversation insights as requested.' }]
+    };
 
-    console.log(`🧠 [AI Insights] Generated for ${phone}:`, object);
+    const result = await callClaudeDirectly(payload);
+    const text = result.content[0].text;
+    const object = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
 
     await supabase.from('chat_insights').upsert({
       user_id: userId,
@@ -164,137 +193,120 @@ async function generateChatInsight(supabase: any, userId: string, phone: string,
 }
 
 // ═══════════════════════════════════════════════════════
-// Main handler (Claude Powered)
+// Main Entry Point
 // ═══════════════════════════════════════════════════════
 
 export async function handleAIResponse(sender: string, message: string, botId: string) {
-  console.log(`🧠 [AI Engine] ⚡ CLAUDE: Processing Bot: ${botId}, Sender: ${sender}`);
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  console.log(`🧠 [AI Engine] DIRECT CLAUDE: Processing Bot: ${botId}, Sender: ${sender}`);
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-  // 1. Fetch Business Context
   const { data: bot } = await supabase.from('bots').select('*').eq('id', botId).single();
   if (!bot) return null;
-
   const userId = bot.user_id;
 
-  // Use flat Promise.all to fetch everything at once
   const [profileResult, productsResult, faqsResult, kbResult, sessionResult] = await Promise.all([
-    supabase.from('profiles').select('business_name, contact_email').eq('id', userId).single(),
+    supabase.from('profiles').select('*').eq('id', userId).single(),
     supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true).limit(20),
     supabase.from('faqs').select('*').eq('user_id', userId).limit(20),
     supabase.from('ai_knowledge_base').select('*').eq('user_id', userId).limit(10),
-    supabase.from('whatsapp_sessions').select('whapi_channel_id, whapi_token').eq('user_id', userId).single()
+    supabase.from('whatsapp_sessions').select('*').eq('user_id', userId).single()
   ]);
 
   const profile = profileResult.data;
-  const products = productsResult.data || [];
-  const faqs = faqsResult.data || [];
-  const knowledgeBase = kbResult.data || [];
   const session = sessionResult.data;
-
-  const businessName = profile?.business_name || 'Our Company';
-  const channelId = session?.whapi_channel_id || 'unknown';
   const whapiToken = session?.whapi_token;
+  if (!whapiToken) return null;
 
-  if (!whapiToken) {
-    console.warn(`❌ [AI Engine] Cannot proceed: WHAPI_TOKEN is missing for user: ${userId}`);
-    return null;
-  }
-
-  // 2. Fetch Chat Memory for Context (Last 10 messages)
-  const { data: history } = await supabase
-    .from('chat_memory')
-    .select('role, content')
-    .eq('channel_id', channelId)
-    .eq('customer_phone', sender)
-    .order('created_at', { ascending: false })
-    .limit(10);
-
-  const contextMessages: any[] = (history || []).reverse().map(h => ({
-    role: h.role === 'assistant' ? 'assistant' : 'user',
-    content: h.content
-  }));
-
-  // Add the current message for Claude to see
+  const { data: history } = await supabase.from('chat_memory').select('role, content').eq('customer_phone', sender).order('created_at', { ascending: false }).limit(10);
+  const contextMessages = (history || []).reverse();
   const chatMessages = [...contextMessages, { role: 'user', content: message }];
 
-  // 3. Build System Prompt
-  const systemPrompt = buildSystemPrompt(businessName, products, faqs, knowledgeBase);
+  const systemPrompt = buildSystemPrompt(profile?.business_name || 'Business', productsResult.data || [], faqsResult.data || [], kbResult.data || []);
 
-  // 4. Trigger Claude Agent
+  const tools = [
+    {
+      name: 'generate_checkout_link',
+      description: 'Generates a secure paylink for a purchase.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          product_name: { type: 'string' },
+          amount: { type: 'number' }
+        },
+        required: ['product_name', 'amount']
+      }
+    },
+    {
+      name: 'book_appointment',
+      description: 'Provides the scheduling link.',
+      input_schema: { type: 'object', properties: { confirm: { type: 'boolean' } }, required: ['confirm'] }
+    },
+    {
+      name: 'fetch_tracking',
+      description: 'Checks order shipping status.',
+      input_schema: { type: 'object', properties: { tracking_id: { type: 'string' } }, required: ['tracking_id'] }
+    }
+  ];
+
   try {
-    const { text } = await generateText({
-      model: anthropic('claude-3-5-sonnet-20240620'), 
+    let payload = {
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
       system: systemPrompt,
       messages: chatMessages,
-      tools: {
-        generate_checkout_link: tool({
-          description: 'Generates a secure payment link for a product purchase.',
-          parameters: z.object({
-            product_name: z.string(),
-            amount: z.number()
-          }),
-          execute: async ({ product_name, amount }) => {
-            console.log(`🛠️ [Tool] Generating checkout link for ${product_name} ($${amount})`);
-            const link = await generateCheckoutLink(supabase, userId, amount, sender, channelId);
-            return link 
-              ? `SUCCESS: Generated link for ${product_name}: ${link}` 
-              : `FAILURE: Could not generate link for ${product_name}. Tell the user you will process it manually.`;
-          }
-        }),
-        book_appointment: tool({
-          description: 'Provides the scheduling link for bookings and consultations.',
-          parameters: z.object({
-            confirm: z.boolean().optional()
-          }),
-          execute: async () => {
-            const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
-            return `Link: https://cal.com/${calId}`;
-          }
-        }),
-        fetch_tracking: tool({
-          description: 'Checks the shipping status of an order using a tracking ID.',
-          parameters: z.object({
-            tracking_id: z.string().describe('Tracking ID')
-          }),
-          execute: async ({ tracking_id }) => {
-            const status = await fetchExternalTracking(supabase, userId, tracking_id);
-            return status || `No tracking information found for ID ${tracking_id}.`;
-          }
-        })
-      },
-      maxSteps: 3, 
-    });
+      tools: tools
+    };
 
-    // 5. Build Final History for Insights (including this turn)
-    const updatedHistory = [...chatMessages, { role: 'assistant', content: text }];
+    let result = await callClaudeDirectly(payload);
+    let finalContent = '';
 
-    // 6. Send Response via Whapi
-    if (text) {
-      console.log(`🧠 [AI Engine] 📤 Sending WhatsApp response via Whapi...`);
+    // Handle Tool Execution Loop (Native)
+    if (result.stop_reason === 'tool_use') {
+      const toolUseBlocks = result.content.filter((c: any) => c.type === 'tool_use');
+      const textBlocks = result.content.filter((c: any) => c.type === 'text');
+      finalContent += textBlocks.map((t: any) => t.text).join('\n');
+
+      const toolResults = await Promise.all(toolUseBlocks.map((tu: any) => handleToolExecution(tu, supabase, userId, sender, session.whapi_channel_id, profile)));
+
+      // Call Claude again with results
+      const nextPayload = {
+        ...payload,
+        messages: [
+          ...chatMessages,
+          { role: 'assistant', content: result.content },
+          { role: 'user', content: toolResults }
+        ]
+      };
+      
+      const nextResult = await callClaudeDirectly(nextPayload);
+      finalContent += nextResult.content.map((c: any) => c.text).filter(Boolean).join('\n');
+    } else {
+      finalContent = result.content.map((c: any) => c.text).join('\n');
+    }
+
+    // Send WhatsApp Response
+    if (finalContent) {
+      console.log(`🧠 [AI Engine] 📤 Sending response...`);
       await fetch(`${WHAPI_BASE_URL}/messages/text`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${whapiToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: sender, body: text }),
+        body: JSON.stringify({ to: sender, body: finalContent }),
       });
     }
 
-    // 7. Log Memory & Trigger Insights (Background)
+    // Log Memory & Background Insights
     await Promise.all([
       supabase.from('chat_memory').insert([
-        { channel_id: channelId, customer_phone: sender, role: 'user', content: message },
-        { channel_id: channelId, customer_phone: sender, role: 'assistant', content: text }
+        { channel_id: session.whapi_channel_id, customer_phone: sender, role: 'user', content: message },
+        { channel_id: session.whapi_channel_id, customer_phone: sender, role: 'assistant', content: finalContent }
       ]),
-      generateChatInsight(supabase, userId, sender, updatedHistory)
+      generateChatInsight(supabase, userId, sender, [...chatMessages, { role: 'assistant', content: finalContent }])
     ]);
 
-    return text;
-  } catch (claudeErr: any) {
-    console.error(`🔥 [AI Engine] Claude API Error: ${claudeErr.message}`);
-    await supabase.from('chat_memory').insert({ channel_id: channelId, customer_phone: sender, role: 'user', content: message });
+    return finalContent;
+
+  } catch (err: any) {
+    console.error(`🔥 [AI Engine] Direct Claude Failed:`, err.message);
     return null;
   }
 }
