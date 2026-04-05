@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getWhatsAppQR, getWhatsAppStatus, getWhatsAppPairingCode } from '@/app/dashboard/actions';
+import { getWhatsAppQR, getWhatsAppStatus, getWhatsAppPairingCode, disconnectWhatsApp } from '@/app/dashboard/actions';
 
 export default function WhatsAppConnector() {
   const [qr, setQr] = useState<string | null>(null);
@@ -62,6 +62,16 @@ export default function WhatsAppConnector() {
       setError(result.error || 'Failed to generate code');
       setStatus('error');
     }
+    setLoading(false);
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect your WhatsApp?')) return;
+    setLoading(true);
+    await disconnectWhatsApp();
+    setStatus('idle');
+    setQr(null);
+    setPairingCode(null);
     setLoading(false);
   };
 
@@ -175,28 +185,55 @@ export default function WhatsAppConnector() {
       {status === 'connected' && (
         <div style={{ padding: '20px', borderRadius: '16px', background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
           <div style={{ fontSize: '32px' }}>⚡</div>
-          <button 
-            onClick={fetchStatus} 
-            disabled={loading}
-            className="glass-hover"
-            style={{ 
-              background: 'var(--grad-primary)', 
-              border: 'none', 
-              color: '#000', 
-              padding: '12px 24px', 
-              borderRadius: '12px', 
-              fontSize: '14px', 
-              fontWeight: 700, 
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            {loading ? <div className="spinner" style={{ width: '14px', height: '14px', border: '2px solid rgba(0,0,0,0.1)', borderTopColor: '#000', borderRadius: '50%' }}></div> : '🔄'} 
-            Refresh Handshake
-          </button>
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Trigger this if your bot stops responding to messages.</p>
+          
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button 
+              onClick={fetchStatus} 
+              disabled={loading}
+              className="glass-hover"
+              style={{ 
+                background: 'var(--grad-primary)', 
+                border: 'none', 
+                color: '#000', 
+                padding: '12px 24px', 
+                borderRadius: '12px', 
+                fontSize: '14px', 
+                fontWeight: 700, 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {loading ? <div className="spinner" style={{ width: '14px', height: '14px', border: '2px solid rgba(0,0,0,0.1)', borderTopColor: '#000', borderRadius: '50%' }}></div> : '🔄'} 
+              Refresh Handshake
+            </button>
+
+            <button 
+              onClick={handleDisconnect} 
+              disabled={loading}
+              style={{ 
+                background: 'rgba(239, 68, 68, 0.1)', 
+                border: '1px solid rgba(239, 68, 68, 0.3)', 
+                color: '#ef4444', 
+                padding: '12px 24px', 
+                borderRadius: '12px', 
+                fontSize: '14px', 
+                fontWeight: 600, 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
+              onMouseOut={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+            >
+              Disconnect
+            </button>
+          </div>
+
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Trigger refresh if your bot stops responding to messages.</p>
         </div>
       )}
 

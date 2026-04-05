@@ -4,6 +4,16 @@ import { createClient } from '@/utils/supabase/server';
 import { executeChatSelaIntelligence } from '@/utils/ai/engine';
 import { encrypt, decrypt } from '@/utils/encryption';
 
+function parseSafeJSON(content: string) {
+  try {
+    const cleanContent = content.replace(/```json\n?|```/gi, '').trim();
+    return JSON.parse(cleanContent);
+  } catch (e) {
+    console.error('Failed to parse AI JSON:', content);
+    throw new Error('AI returned invalid format: ' + content);
+  }
+}
+
 // ─── PDF/Document Processing ─────────────────────────────────────────────────
 
 export async function processDocumentUpload(base64Data: string, fileName: string) {
@@ -46,7 +56,7 @@ export async function processDocumentUpload(base64Data: string, fileName: string
     };
 
     const aiResp = await executeChatSelaIntelligence(payload);
-    const { categorizedFacts } = JSON.parse(aiResp.choices[0].message.content);
+    const { categorizedFacts } = parseSafeJSON(aiResp.choices[0].message.content);
 
     return { success: true, categorizedFacts: categorizedFacts || {}, fileName };
   } catch (err: any) {
@@ -101,12 +111,12 @@ export async function processVoiceTraining(base64Audio: string) {
     };
 
     const aiResp = await executeChatSelaIntelligence(payload);
-    const result = JSON.parse(aiResp.choices[0].message.content);
+    const data = parseSafeJSON(aiResp.choices[0].message.content);
 
     return { 
       success: true, 
-      categorizedFacts: result.categorizedFacts || {}, 
-      instructions: result.instructions || [],
+      categorizedFacts: data.categorizedFacts || {}, 
+      instructions: data.instructions || [],
       transcript 
     };
   } catch (err: any) {
@@ -154,7 +164,7 @@ export async function magicFillKnowledge(category: string, businessName: string)
     };
 
     const aiResp = await executeChatSelaIntelligence(payload);
-    const { suggestions } = JSON.parse(aiResp.choices[0].message.content);
+    const { suggestions } = parseSafeJSON(aiResp.choices[0].message.content);
 
     return { success: true, suggestions };
   } catch (err: any) {
@@ -245,7 +255,7 @@ export async function getTrainingQuestions() {
   };
 
   const aiResp = await executeChatSelaIntelligence(payload);
-  const { questions } = JSON.parse(aiResp.choices[0].message.content);
+  const { questions } = parseSafeJSON(aiResp.choices[0].message.content);
 
   return { success: true, questions: questions || [] };
 }

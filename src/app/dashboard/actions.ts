@@ -400,3 +400,28 @@ export async function getDashboardStats() {
     totalInsights: insights?.length || 0
   };
 }
+
+/**
+ * DISCONNECT WHATSAPP
+ * Deletes the WhatsApp session and logs out the device from Whapi.
+ */
+export async function disconnectWhatsApp() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const token = await getUserWhapiToken(user.id);
+  if (token) {
+    try {
+       // Log out the device from Whapi
+       await fetch(`${WHAPI_BASE_URL}/users/logout`, {
+         method: 'POST',
+         headers: { 'Authorization': `Bearer ${token}` }
+       });
+    } catch(e) {}
+  }
+
+  await supabase.from('whatsapp_sessions').delete().eq('user_id', user.id);
+  revalidatePath('/dashboard');
+  return { success: true };
+}
