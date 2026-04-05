@@ -180,7 +180,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
 
   const { data: bot, error: botErr } = await supabase
     .from('bots')
-    .select('*, profiles(business_name)')
+    .select('*')
     .eq('id', botId)
     .single();
 
@@ -189,9 +189,17 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     return null;
   }
 
-  const businessName = bot.profiles?.business_name || 'Our Company';
-  const botName = bot.name || 'Sales Assistant';
   const userId = bot.user_id;
+
+  // Fetch profile separately for business name robustness
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('business_name')
+    .eq('id', userId)
+    .single();
+
+  const businessName = profile?.business_name || 'Our Company';
+  const botName = bot.name || 'Sales Assistant';
   const menuOptions = bot.menu_options || [];
   const sequences = bot.sequences || [];
   const msg = message.trim();
