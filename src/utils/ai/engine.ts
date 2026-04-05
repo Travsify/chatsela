@@ -166,7 +166,7 @@ async function generateChatInsight(supabase: any, userId: string, phone: string,
   try {
     const messages = history.map(h => ({ role: h.role, content: h.content }));
     const payload = {
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-5-sonnet-20240620',
       max_tokens: 500,
       system: `Analyze chat history. Respond ONLY with a JSON object: { "summary": "...", "sentiment": "positive|neutral|negative", "intent": "inquiry|purchase|support", "valueEstimate": number, "nextStep": "..." }`,
       messages: [...messages, { role: 'user', content: 'Extract conversation insights as requested.' }]
