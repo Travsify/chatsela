@@ -2,13 +2,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  generateBotConfig, 
   getBotSettings, 
   saveBotSettings, 
-  SequenceFlow,
   getKnowledgeBaseDocs,
   addKnowledgeFact,
-  deleteKnowledgeFact
+  deleteKnowledgeFact,
+  processDocumentUpload,
+  getTrainingQuestions,
+  submitTrainingAnswer,
+  scrapeWebsiteToKnowledgeBase,
+  getMerchantIntegrations,
+  saveMerchantIntegrations,
+  generateBotConfig
 } from './actions';
 
 // ── Toggle switch ─────────────────────────────────────────────────────────────
@@ -17,7 +22,6 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
     <div
       onClick={onChange}
       role="switch"
-      aria-checked={on}
       style={{
         width: '46px', height: '24px', flexShrink: 0,
         background: on ? 'linear-gradient(135deg,#00ff88,#00d4ff)' : 'rgba(255,255,255,0.1)',
@@ -34,17 +38,6 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   );
 }
 
-// ── Inline field ──────────────────────────────────────────────────────────────
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <label style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</label>
-      {children}
-      {hint && <p style={{ fontSize: '12px', color: 'var(--accent-primary)' }}>{hint}</p>}
-    </div>
-  );
-}
-
 const INPUT_STYLE: React.CSSProperties = {
   padding: '12px 16px',
   background: 'rgba(255,255,255,0.04)',
@@ -55,90 +48,106 @@ const INPUT_STYLE: React.CSSProperties = {
   fontSize: '14px',
   width: '100%',
   fontFamily: 'Inter, sans-serif',
-  transition: 'border-color 0.2s',
 };
 
 export default function BotConfigPage() {
   const [botName, setBotName]             = useState('My Sales Assistant');
-  const [prompt, setPrompt]               = useState('You are a professional sales assistant. Be helpful, friendly, and guide customers to make a purchase or book a consultation.');
+  const [prompt, setPrompt]               = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('Hello! 👋 How can I help you today?');
-  const [menuOptions, setMenuOptions]     = useState<string[]>(['📦 Our Products & Services', '💰 Pricing', '❓ FAQs', '👤 Talk to a Human']);
-  const [sequences, setSequences]         = useState<SequenceFlow[]>([]);
-  const [options, setOptions]             = useState({ closeDeals: true, autoPayment: false, bookMeetings: false, afterHours: true });
-
+  const [menuOptions, setMenuOptions]     = useState<string[]>(['📦 Our Products & Services', '📅 Book Appointment', '💬 Contact Us']);
+  
   const [kbDocs, setKbDocs]       = useState<any[]>([]);
   const [newFact, setNewFact]     = useState('');
   const [isAddingFact, setIsAddingFact] = useState(false);
 
-  const [saved, setSaved]       = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  // Integrations state
+  const [bookingUrl, setBookingUrl] = useState('');
+  const [stripeSecret, setStripeSecret] = useState('');
+  const [paystackSecret, setPaystackSecret] = useState('');
+  const [hasStripe, setHasStripe] = useState(false);
+  const [hasPaystack, setHasPaystack] = useState(false);
+  const [isSavingIntegrations, setIsSavingIntegrations] = useState(false);
 
-  const [magicInput, setMagicInput]   = useState('');
+  // Scraper & Magic Setup
+  const [magicInput, setMagicInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationResult, setGenerationResult] = useState<{
-    industry?: string; brandName?: string;
-  } | null>(null);
-  const [genError, setGenError] = useState<string | null>(null);
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<string | null>(null);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [saved, setSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Load saved bot and KB on mount
+  // Document upload
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Training
+  const [trainingQuestions, setTrainingQuestions] = useState<string[]>([]);
+  const [isTraining, setIsTraining] = useState(false);
+  const [trainingAnswers, setTrainingAnswers] = useState<Record<number, string>>({});
+
   useEffect(() => {
     (async () => {
-      const result = await getBotSettings();
-      if (result.success && result.bot) {
-        if (result.bot.name)            setBotName(result.bot.name);
-        if (result.bot.prompt)          setPrompt(result.bot.prompt);
-        if (result.bot.welcome_message) setWelcomeMessage(result.bot.welcome_message);
-        if (result.bot.menu_options?.length) setMenuOptions(result.bot.menu_options);
-        if (result.bot.sequences)       setSequences(result.bot.sequences);
+      const bot = await getBotSettings();
+      if (bot.success && bot.bot) {
+        setBotName(bot.bot.name || '');
+        setPrompt(bot.bot.prompt || '');
+        setWelcomeMessage(bot.bot.welcome_message || '');
+        setMenuOptions(bot.bot.menu_options || []);
       }
-
+      
       const kb = await getKnowledgeBaseDocs();
       if (kb.success) setKbDocs(kb.documents || []);
+
+      const ints = await getMerchantIntegrations();
+      if (ints.success) {
+        setBookingUrl(ints.integrations.booking_url);
+        setHasStripe(ints.integrations.has_stripe);
+        setHasPaystack(ints.integrations.has_paystack);
+      }
     })();
   }, []);
 
-  // Magic Setup
-  const handleMagicSetup = async () => {
-    const trimmed = magicInput.trim();
-    if (!trimmed) { inputRef.current?.focus(); return; }
-    setIsGenerating(true);
-    setGenError(null);
-    try {
-      const result = await generateBotConfig(trimmed);
-      if (result.success) {
-        setBotName(result.botName!);
-        setPrompt(result.prompt!);
-        setWelcomeMessage(result.welcomeMessage!);
-        setMenuOptions(result.menuOptions!);
-        setSequences(result.sequences || []);
-        setGenerationResult({ industry: result.industry, brandName: result.brandName });
-      } else {
-        setGenError('Could not generate a config. Try a different URL or write a short description.');
+  const handleSaveAll = async () => {
+    setIsSaving(true);
+    await saveBotSettings(botName, prompt, welcomeMessage, menuOptions);
+    setSaved(true);
+    setIsSaving(false);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleSaveIntegrations = async () => {
+    setIsSavingIntegrations(true);
+    const res = await saveMerchantIntegrations({ 
+      booking_url: bookingUrl, 
+      stripe_secret: stripeSecret || undefined, 
+      paystack_secret: paystackSecret || undefined 
+    });
+    if (res.success) {
+      setStripeSecret('');
+      setPaystackSecret('');
+      const ints = await getMerchantIntegrations();
+      if (ints.success) {
+        setHasStripe(ints.integrations.has_stripe);
+        setHasPaystack(ints.integrations.has_paystack);
       }
-    } catch {
-      setGenError('Something went wrong. Please try again.');
+    }
+    setIsSavingIntegrations(false);
+  };
+
+  const handleMagicSetup = async () => {
+    if (!magicInput.trim()) return;
+    setIsGenerating(true);
+    const res = await generateBotConfig(magicInput);
+    if (res.success) {
+      setBotName(res.botName!);
+      setPrompt(res.prompt!);
+      setWelcomeMessage(res.welcomeMessage!);
+      setMenuOptions(res.menuOptions!);
     }
     setIsGenerating(false);
   };
 
-  // Save Settings
-  const handleSave = async () => {
-    setIsSaving(true);
-    setSaveError(null);
-    const result = await saveBotSettings(botName, prompt, welcomeMessage, menuOptions, sequences);
-    setIsSaving(false);
-    if (result.success) {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } else {
-      setSaveError(result.error || 'Save failed.');
-    }
-  };
-
-  // Knowledge Base Actions
   const handleAddFact = async () => {
     if (!newFact.trim()) return;
     setIsAddingFact(true);
@@ -151,122 +160,219 @@ export default function BotConfigPage() {
   };
 
   const handleDeleteFact = async (id: string) => {
-    const res = await deleteKnowledgeFact(id);
-    if (res.success) setKbDocs(kbDocs.filter(d => d.id !== id));
+    await deleteKnowledgeFact(id);
+    setKbDocs(kbDocs.filter(d => d.id !== id));
   };
 
-  // Menu helpers
-  const addMenuOption = () => menuOptions.length < 7 && setMenuOptions([...menuOptions, '']);
-  const updateMenuOption = (i: number, val: string) => { const next = [...menuOptions]; next[i] = val; setMenuOptions(next); };
-  const deleteMenuOption = (i: number) => setMenuOptions(menuOptions.filter((_, idx) => idx !== i));
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      const res = await processDocumentUpload(base64, file.name);
+      if (res.success) {
+        const kb = await getKnowledgeBaseDocs();
+        if (kb.success) setKbDocs(kb.documents || []);
+      }
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleScrape = async () => {
+    if (!magicInput.trim()) return;
+    setIsScraping(true);
+    setScrapeResult(null);
+    const res = await scrapeWebsiteToKnowledgeBase(magicInput);
+    if (res.success) {
+      setScrapeResult(`✅ God-Mode: Extracted ${res.count} facts.`);
+      const kb = await getKnowledgeBaseDocs();
+      if (kb.success) setKbDocs(kb.documents || []);
+    } else {
+      setScrapeResult(`❌ Error: ${res.error}`);
+    }
+    setIsScraping(false);
+  };
+
+  const handleGetTraining = async () => {
+    setIsTraining(true);
+    const res = await getTrainingQuestions();
+    if (res.success) setTrainingQuestions(res.questions);
+    setIsTraining(false);
+  };
+
+  const handleSaveTraining = async (idx: number) => {
+    const ans = trainingAnswers[idx];
+    if (!ans) return;
+    await submitTrainingAnswer(trainingQuestions[idx], ans);
+    setTrainingAnswers(prev => ({ ...prev, [idx]: '' }));
+    const kb = await getKnowledgeBaseDocs();
+    if (kb.success) setKbDocs(kb.documents || []);
+  };
+
+  const commonSectionStyle: React.CSSProperties = { padding: '28px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)' };
 
   return (
-    <div style={{ display: 'flex', width: '100%', gap: '30px' }}>
-      <main style={{ flex: 1, paddingTop: '40px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+    <div style={{ display: 'flex', width: '100%', gap: '30px', paddingBottom: '80px' }}>
+      <main style={{ flex: 1, paddingTop: '40px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+        
         <header>
-          <h1 style={{ fontSize: '28px', marginBottom: '6px' }}>🤖 My Sales Assistant</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Configure your AI sales bot — name, personality, and the menu your customers see on WhatsApp.</p>
+          <h1 style={{ fontSize: '32px', fontWeight: 800, marginBottom: '8px', background: 'linear-gradient(135deg,#fff,#888)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            ChatSela Intelligence Engine 🦾
+          </h1>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '15px' }}>Configure your white-labeled autonomous sales engine. Universal integrations for payments and bookings.</p>
         </header>
 
-        {/* Step 1: Magic Setup */}
-        <section className="glass" style={{ padding: '28px', borderRadius: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-            <span style={{ fontSize: '20px' }}>✨</span>
-            <h3 style={{ fontSize: '17px', fontWeight: 700 }}>Auto-Generate from URL</h3>
+        {/* ── Magic Setup / Scraper ── */}
+        <section style={commonSectionStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+            <span style={{ fontSize: '20px' }}>🔥</span>
+            <h3 style={{ fontSize: '18px', fontWeight: 700 }}>God-Mode Scraper (God Mode)</h3>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input
-              ref={inputRef}
-              type="text"
-              value={magicInput}
-              onChange={(e) => setMagicInput(e.target.value)}
-              placeholder="e.g. shoprite.com"
-              style={INPUT_STYLE}
-            />
-            <button onClick={handleMagicSetup} disabled={isGenerating} style={{ background: 'linear-gradient(135deg,#00ff88,#00d4ff)', color: '#000', border: 'none', padding: '12px 28px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>
-              {isGenerating ? '⌛' : 'Generate'}
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px' }}>Enter your website URL. ChatSela will crawl your entire site (pricing, services, features) to build 100% factual business IQ.</p>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <input type="text" value={magicInput} onChange={(e) => setMagicInput(e.target.value)} placeholder="e.g. www.yourbusiness.com" style={INPUT_STYLE} />
+            <button onClick={handleScrape} disabled={isScraping} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>
+               {isScraping ? '⌛ Scraping...' : '🌐 Scrape URL'}
+            </button>
+            <button onClick={handleMagicSetup} disabled={isGenerating} style={{ background: 'linear-gradient(135deg,#00ff88,#00d4ff)', color: '#000', border: 'none', padding: '12px 24px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>
+               {isGenerating ? '⌛ Generating...' : '✨ Auto-Config Bot'}
+            </button>
+          </div>
+          {scrapeResult && <p style={{ marginTop: '12px', fontSize: '13px', color: scrapeResult.startsWith('✅') ? '#00ff88' : '#ef4444' }}>{scrapeResult}</p>}
+        </section>
+
+        {/* ── Payments & Calendar Integrations ── */}
+        <section style={{ ...commonSectionStyle, borderLeft: '4px solid #00ff88' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+            <span style={{ fontSize: '20px' }}>💳</span>
+            <h3 style={{ fontSize: '18px', fontWeight: 700 }}>Payments & Appointments</h3>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>📅 Custom Booking URL (Cal.com / Calendly)</label>
+              <input type="text" value={bookingUrl} onChange={(e) => setBookingUrl(e.target.value)} placeholder="https://cal.com/your-business" style={INPUT_STYLE} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                  Stripe Secret {hasStripe && <span style={{ color: '#00ff88' }}>(Active ✅)</span>}
+                </label>
+                <input type="password" value={stripeSecret} onChange={(e) => setStripeSecret(e.target.value)} placeholder="sk_test_..." style={INPUT_STYLE} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                  Paystack Secret {hasPaystack && <span style={{ color: '#00ff88' }}>(Active ✅)</span>}
+                </label>
+                <input type="password" value={paystackSecret} onChange={(e) => setPaystackSecret(e.target.value)} placeholder="sk_test_..." style={INPUT_STYLE} />
+              </div>
+            </div>
+            <button onClick={handleSaveIntegrations} disabled={isSavingIntegrations} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '12px 24px', borderRadius: '12px', fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-start' }}>
+              {isSavingIntegrations ? '⌛ Saving...' : '💾 Save Integrations'}
             </button>
           </div>
         </section>
 
-        {/* Step 2: Knowledge Vault */}
-        <section className="glass" style={{ padding: '28px', borderRadius: '24px', borderLeft: '4px solid #3b82f6' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-            <span style={{ fontSize: '18px' }}>🧠</span>
-            <h3 style={{ fontSize: '17px', fontWeight: 700 }}>The Knowledge Vault</h3>
+        {/* ── Knowledge Vault ── */}
+        <section style={commonSectionStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '20px' }}>🧠</span>
+              <h3 style={{ fontSize: '18px', fontWeight: 700 }}>The Knowledge Vault</h3>
+            </div>
+            <p style={{ fontSize: '13px', color: '#00ff88' }}>{kbDocs.length} Facts Verified</p>
           </div>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>What facts should Claude know about your business?</p>
-          
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <input type="text" value={newFact} onChange={(e) => setNewFact(e.target.value)} placeholder="Add a business fact..." style={INPUT_STYLE} />
-            <button onClick={handleAddFact} disabled={isAddingFact} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>
-               {isAddingFact ? '...' : 'Add'}
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+            <input type="text" value={newFact} onChange={(e) => setNewFact(e.target.value)} placeholder="Add a business fact manually..." style={INPUT_STYLE} />
+            <button onClick={handleAddFact} disabled={isAddingFact} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              Add
             </button>
           </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <input ref={fileInputRef} type="file" accept=".pdf,.txt" onChange={handleFileUpload} style={{ display: 'none' }} />
+            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa', border: '1px dashed rgba(139,92,246,0.3)', padding: '14px', width: '100%', borderRadius: '12px', cursor: 'pointer', fontWeight: 600 }}>
+               {isUploading ? '⌛ Processing PDF...' : '📄 Click to Upload Business Brochure / PDF'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
             {kbDocs.map(doc => (
-              <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <p style={{ fontSize: '13px', color: '#e2e8f0', flex: 1, marginRight: '10px' }}>{doc.content}</p>
-                <button onClick={() => handleDeleteFact(doc.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px' }}>✕</button>
+              <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <p style={{ fontSize: '14px', lineHeight: '1.5' }}>{doc.content}</p>
+                <button onClick={() => handleDeleteFact(doc.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
               </div>
             ))}
           </div>
         </section>
 
-        {/* Step 3: Identity & Menu */}
-        <section className="glass" style={{ padding: '28px', borderRadius: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <h3 style={{ fontSize: '17px', fontWeight: 700 }}>🪪 Bot Identity</h3>
-          <Field label="Bot Name"><input type="text" value={botName} onChange={(e) => setBotName(e.target.value)} style={INPUT_STYLE} /></Field>
-          <Field label="Sales Prompt"><textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ ...INPUT_STYLE, resize: 'vertical' }} /></Field>
+        {/* ── Bot Identity ── */}
+        <section style={commonSectionStyle}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px' }}>🪪 Bot Identity</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Assistant Name</label>
+              <input type="text" value={botName} onChange={(e) => setBotName(e.target.value)} style={INPUT_STYLE} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Sales Protocol (The Core Brain)</label>
+              <textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ ...INPUT_STYLE, resize: 'vertical' }} />
+            </div>
+          </div>
         </section>
 
-        {/* Step 4: WhatsApp Menu */}
-        <section className="glass" style={{ padding: '28px', borderRadius: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-           <h3 style={{ fontSize: '17px', fontWeight: 700 }}>📲 Interactive Menu</h3>
-           <Field label="Welcome Message"><input type="text" value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} style={INPUT_STYLE} /></Field>
-           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-             {menuOptions.map((opt, i) => (
-                <div key={i} style={{ display: 'flex', gap: '10px' }}>
-                  <input type="text" value={opt} onChange={(e) => updateMenuOption(i, e.target.value)} style={{ ...INPUT_STYLE, flex: 1 }} />
-                  <button onClick={() => deleteMenuOption(i)} style={{ padding: '0 12px', color: '#ff6b6b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-                </div>
-             ))}
-             {menuOptions.length < 7 && <button onClick={addMenuOption} style={{ color: 'var(--accent-primary)', background: 'none', border: '1px dashed rgba(0,255,136,0.2)', padding: '10px', borderRadius: '12px', cursor: 'pointer' }}>+ Add Option</button>}
+        {/* ── Interactive Training ── */}
+        <section style={{ ...commonSectionStyle, borderLeft: '4px solid #f59e0b' }}>
+           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+             <h3 style={{ fontSize: '18px', fontWeight: 700 }}>🎓 Fortify Intelligence</h3>
+             <button onClick={handleGetTraining} disabled={isTraining} style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>
+               {isTraining ? 'Analyzing...' : 'Find Knowledge Gaps'}
+             </button>
            </div>
-        </section>
-
-        <section className="glass" style={{ padding: '28px', borderRadius: '24px' }}>
-           <h3 style={{ fontSize: '17px', fontWeight: 700, marginBottom: '20px' }}>⚙️ Sales Behaviour</h3>
-           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-             {[
-               { key: 'closeDeals', icon: '🎯', title: 'Close Deals' },
-               { key: 'autoPayment', icon: '💳', title: 'Auto-Payment' },
-               { key: 'bookMeetings', icon: '📅', title: 'Book Meetings' },
-               { key: 'afterHours', icon: '🌙', title: '24/7 Mode' },
-             ].map(({ key, icon, title }) => (
-                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span style={{ fontSize: '14px' }}>{icon} {title}</span>
-                  <Toggle on={(options as any)[key]} onChange={() => setOptions((p: any) => ({ ...p, [key]: !p[key] }))} />
+           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+             {trainingQuestions.map((q, idx) => (
+                <div key={idx} style={{ padding: '20px', background: 'rgba(245,158,11,0.05)', borderRadius: '16px', border: '1px solid rgba(245,158,11,0.1)' }}>
+                  <p style={{ fontWeight: 600, color: '#f59e0b', marginBottom: '12px' }}>❓ {q}</p>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <input type="text" value={trainingAnswers[idx] || ''} onChange={(e) => setTrainingAnswers(p => ({ ...p, [idx]: e.target.value }))} style={INPUT_STYLE} placeholder="Your answer..." />
+                    <button onClick={() => handleSaveTraining(idx)} style={{ background: '#00ff88', color: '#000', border: 'none', padding: '8px 16px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer' }}>Save</button>
+                  </div>
                 </div>
              ))}
            </div>
         </section>
 
-        <button className="glow-btn" style={{ padding: '14px 36px', width: 'fit-content' }} onClick={handleSave} disabled={isSaving}>
-           {isSaving ? '⏳ Saving...' : saved ? '✅ Saved!' : '💾 Save Settings'}
+        <button className="glow-btn" style={{ padding: '16px 40px', width: 'fit-content' }} onClick={handleSaveAll} disabled={isSaving}>
+           {isSaving ? '⌛ Saving Engine Configuration...' : saved ? '✅ Configuration Saved!' : '💾 Save & Deploy Engine'}
         </button>
+
       </main>
 
-      <aside style={{ width: '340px', flexShrink: 0, paddingTop: '40px' }}>
-        <div style={{ position: 'sticky', top: '20px', background: '#0b141a', borderRadius: '28px', padding: '16px', border: '6px solid #1e2a30' }}>
-           <p style={{ textAlign: 'center', fontSize: '11px', color: '#8696a0', marginBottom: '12px' }}>WhatsApp Preview</p>
-           <div style={{ borderBottom: '1px solid #1e2a30', paddingBottom: '12px', marginBottom: '12px', display: 'flex', gap: '10px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#00a884' }} />
-              <div><p style={{ fontSize: '14px', fontWeight: '600' }}>{botName}</p><p style={{ fontSize: '10px', color: '#8696a0' }}>Online</p></div>
+      <aside style={{ width: '380px', flexShrink: 0, paddingTop: '40px' }}>
+        <div style={{ position: 'sticky', top: '20px', background: '#0b141a', borderRadius: '32px', padding: '20px', border: '8px solid #1e2a30', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+           <p style={{ textAlign: 'center', fontSize: '12px', color: '#8696a0', marginBottom: '16px', letterSpacing: '0.1em', fontWeight: 600 }}>CHATSZELA LIVE PREVIEW</p>
+           
+           <div style={{ borderBottom: '1px solid #1e2a30', paddingBottom: '16px', marginBottom: '16px', display: 'flex', gap: '12px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg,#00a884, #00d4ff)' }} />
+              <div><p style={{ fontSize: '15px', fontWeight: '700' }}>{botName}</p><p style={{ fontSize: '11px', color: '#00ff88' }}>Engine Online 🟢</p></div>
            </div>
-           <div style={{ background: '#202c33', padding: '10px', borderRadius: '0 12px 12px 12px', fontSize: '13px', marginBottom: '10px' }}>{welcomeMessage}</div>
-           {menuOptions.map((o, i) => o && <div key={i} style={{ padding: '8px', background: '#1d282e', color: '#00a884', borderRadius: '8px', textAlign: 'center', fontSize: '12px', marginBottom: '6px', border: '1px solid #00a88433' }}>{o}</div>)}
+
+           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minHeight: '300px' }}>
+             <div style={{ background: '#202c33', padding: '12px 16px', borderRadius: '0 16px 16px 16px', fontSize: '14px', maxWidth: '85%' }}>{welcomeMessage}</div>
+             {menuOptions.map((o, i) => o && <div key={i} style={{ padding: '12px', background: 'rgba(0,168,132,0.1)', color: '#00ff88', borderRadius: '12px', textAlign: 'center', fontSize: '13px', border: '1px solid rgba(0,168,132,0.3)', fontWeight: 600 }}>{o}</div>)}
+           </div>
+
+           <div style={{ marginTop: '24px', padding: '16px', background: 'rgba(0,255,136,0.05)', borderRadius: '16px', border: '1px solid rgba(0,255,136,0.1)' }}>
+             <p style={{ fontSize: '11px', color: '#00ff88', fontWeight: 800, marginBottom: '4px', textTransform: 'uppercase' }}>Intelligence Metrics</p>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+               <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>KB Status</span>
+               <span style={{ fontSize: '14px', fontWeight: 700 }}>{kbDocs.length} Verified Facts</span>
+             </div>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+               <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>Integrations</span>
+               <span style={{ fontSize: '12px', color: '#00ff88' }}>{ (hasStripe ? 1 : 0) + (hasPaystack ? 1 : 0) + (bookingUrl ? 1 : 0) } / 3 Active</span>
+             </div>
+           </div>
         </div>
       </aside>
     </div>

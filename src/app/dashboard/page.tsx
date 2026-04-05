@@ -62,7 +62,7 @@ export default async function Dashboard() {
                }} />
                {isConnected ? 'AI Sales Agent: ACTIVE' : 'AI Offline (Connect WhatsApp)'}
              </div>
-             <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Claude 3.5 Sonnet analyzing 24/7</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>ChatSela Sales Engine analyzing 24/7</span>
           </div>
         </div>
         
@@ -109,7 +109,7 @@ export default async function Dashboard() {
 
           {!recentInsights || recentInsights.length === 0 ? (
              <div style={{ padding: '60px 20px', textAlign: 'center', opacity: 0.5 }}>
-                <p>Waiting for Claude to analyze your first conversation...</p>
+                <p>Waiting for the first conversation analysis...</p>
              </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -146,7 +146,7 @@ export default async function Dashboard() {
           <div className="glass" style={{ marginTop: 'auto', padding: '20px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(0, 168, 132, 0.05), transparent)', border: '1px solid rgba(0, 168, 132, 0.1)' }}>
              <p style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>🚀 Tip: Feed the AI</p>
              <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-               Add your website or specific business facts to the **Knowledge Vault** to make Claude even more accurate.
+               Add your website or specific business facts to the **Knowledge Vault** to make the Sales Engine even more accurate.
              </p>
              <Link href="/dashboard/bot" style={{ display: 'inline-block', marginTop: '12px', fontSize: '12px', fontWeight: '700', color: '#00a884', textDecoration: 'none' }}>
                Manage Knowledge →

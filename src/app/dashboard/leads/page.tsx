@@ -21,7 +21,7 @@ export default async function LeadsPage() {
             🔥 Sales Intelligence
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '16px' }}>
-            Claude is analyzing your conversations in real-time to find high-value opportunities.
+            **ChatSela Engine** is analyzing your conversations in real-time to find high-value opportunities.
           </p>
         </div>
         
@@ -40,7 +40,7 @@ export default async function LeadsPage() {
           <div style={{ fontSize: '64px', marginBottom: '24px', filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.2))' }}>💬</div>
           <h3 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '12px' }}>Waiting for the first lead...</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '16px', maxWidth: '400px', margin: '0 auto 32px' }}>
-            When a customer messages your WhatsApp bot, Claude will analyze the intent and display the lead here.
+            When a customer messages your WhatsApp bot, our AI will analyze the intent and display the lead here.
           </p>
         </div>
       ) : (

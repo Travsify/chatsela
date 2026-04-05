@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildSystemPrompt } from './prompts';
 
 const WHAPI_BASE_URL = 'https://gate.whapi.cloud';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const CHATSZELA_CORE_KEY = process.env.OPENAI_API_KEY;
 
 // ═══════════════════════════════════════════════════════
 // External Integration Helpers
@@ -110,16 +110,16 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
 }
 
 // ═══════════════════════════════════════════════════════
-// Direct OpenAI API Call (The New Standard)
+// ChatSela Intelligence Engine (Core)
 // ═══════════════════════════════════════════════════════
 
-async function callOpenAIDirectly(payload: any) {
-  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing on Render. Please add it to environment variables.');
+export async function executeChatSelaIntelligence(payload: any) {
+  if (!CHATSZELA_CORE_KEY) throw new Error('ChatSela Intelligence Key is missing on Render. Please add it to environment variables.');
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY.trim()}`,
+      'Authorization': `Bearer ${CHATSZELA_CORE_KEY.trim()}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
@@ -127,7 +127,7 @@ async function callOpenAIDirectly(payload: any) {
 
   const body = await resp.json();
   if (!resp.ok) {
-    throw new Error(`OpenAI API Error (${resp.status}): ${JSON.stringify(body)}`);
+    throw new Error(`ChatSela Core Error (${resp.status}): ${JSON.stringify(body)}`);
   }
 
   return body;
@@ -136,7 +136,7 @@ async function callOpenAIDirectly(payload: any) {
 async function handleToolCall(toolCall: any, supabase: any, userId: string, sender: string, channelId: string, profile: any) {
   const { name, arguments: argsString } = toolCall.function;
   const args = JSON.parse(argsString);
-  console.log(`🛠️ [OpenAI Tool] Executing ${name}...`);
+  console.log(`🛠️ [ChatSela Tool] Executing ${name}...`);
 
   let result = '';
 
@@ -144,8 +144,23 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
     const link = await generateCheckoutLink(supabase, userId, args.amount, sender, channelId);
     result = link ? `SUCCESS: Generated link: ${link}` : `FAILURE: Could not generate link.`;
   } else if (name === 'book_appointment') {
-    const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
-    result = `Link: https://cal.com/${calId}`;
+    // Lead Capture logic: Record the intent even if link provided
+    const bookingTime = args.time || 'requested';
+    const bookingDetails = args.details || 'ChatSela Lead';
+    
+    await supabase.from('bookings').insert({
+      user_id: userId,
+      customer_phone: sender,
+      customer_name: args.name || 'WhatsApp Customer',
+      proposed_time: bookingTime,
+      details: bookingDetails
+    });
+
+    if (profile?.booking_url) {
+      result = `SUCCESS: I've recorded your interest and you can also pick a specific slot here: ${profile.booking_url}`;
+    } else {
+      result = `SUCCESS: I've recorded your requested slot for ${bookingTime}. Our team will confirm with you shortly! ✅`;
+    }
   } else if (name === 'fetch_tracking') {
     const status = await fetchExternalTracking(supabase, userId, args.tracking_id);
     result = status || `No tracking info found for ID ${args.tracking_id}.`;
@@ -160,7 +175,7 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
 }
 
 // ═══════════════════════════════════════════════════════
-// Background Insight Generator (OpenAI)
+// Background Insight Generator
 // ═══════════════════════════════════════════════════════
 
 async function generateChatInsight(supabase: any, userId: string, phone: string, history: any[]) {
@@ -176,7 +191,7 @@ async function generateChatInsight(supabase: any, userId: string, phone: string,
       response_format: { type: "json_object" }
     };
 
-    const result = await callOpenAIDirectly(payload);
+    const result = await executeChatSelaIntelligence(payload);
     const object = JSON.parse(result.choices[0].message.content);
 
     await supabase.from('chat_insights').upsert({
@@ -191,16 +206,16 @@ async function generateChatInsight(supabase: any, userId: string, phone: string,
     }, { onConflict: 'user_id, customer_phone' });
 
   } catch (err: any) {
-    console.error(`🔥 [AI Insights] OpenAI Computation failed:`, err.message);
+    console.error(`🔥 [ChatSela Insights] Intelligence failed:`, err.message);
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// Main Entry Point (OpenAI Migration)
+// Main Entry Point (ChatSela Engine)
 // ═══════════════════════════════════════════════════════
 
 export async function handleAIResponse(sender: string, message: string, botId: string) {
-  console.log(`🧠 [AI Engine] OPENAI MIGRATION: Processing Bot: ${botId}, Sender: ${sender}`);
+  console.log(`🧠 [ChatSela Engine] Processing Bot: ${botId}, Sender: ${sender}`);
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
   const { data: bot } = await supabase.from('bots').select('*').eq('id', botId).single();
@@ -249,13 +264,15 @@ export async function handleAIResponse(sender: string, message: string, botId: s
       type: 'function',
       function: {
         name: 'book_appointment',
-        description: 'Provides the scheduling link for bookings.',
+        description: 'Records an appointment request and provides a scheduling link.',
         parameters: {
           type: 'object',
           properties: {
-            confirm: { type: 'boolean', description: 'Confirm booking' }
+            name: { type: 'string', description: 'Client name' },
+            time: { type: 'string', description: 'Proposed date/time' },
+            details: { type: 'string', description: 'Purpose of booking' }
           },
-          required: ['confirm']
+          required: ['name', 'time']
         }
       }
     },
@@ -283,7 +300,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
       tool_choice: 'auto'
     };
 
-    let response = await callOpenAIDirectly(payload);
+    let response = await executeChatSelaIntelligence(payload);
     let finalContent = '';
     const responseMessage = response.choices[0].message;
 
@@ -303,14 +320,13 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         ]
       };
 
-      const nextResponse = await callOpenAIDirectly(nextPayload);
+      const nextResponse = await executeChatSelaIntelligence(nextPayload);
       finalContent += (nextResponse.choices[0].message.content || '');
     } else {
       finalContent = responseMessage.content;
     }
 
     if (finalContent) {
-      console.log(`🧠 [AI Engine] 📤 Sending OpenAI response...`);
       await fetch(`${WHAPI_BASE_URL}/messages/text`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${whapiToken}`, 'Content-Type': 'application/json' },
@@ -329,7 +345,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     return finalContent;
 
   } catch (err: any) {
-    console.error(`🔥 [AI Engine] OpenAI Migration Failed:`, err.message);
+    console.error(`🔥 [ChatSela Engine] Execution Failed:`, err.message);
     return null;
   }
 }
