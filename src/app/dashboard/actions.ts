@@ -79,7 +79,14 @@ async function registerWhapiWebhook(token: string) {
     return;
   }
 
-  const webhookUrl = `${siteUrl.replace(/\/$/, '')}/api/webhook/whatsapp`;
+  // 3. CLEAN UP (Strip trailing slash, spaces, and accidental placeholders)
+  const cleanBase = siteUrl
+    .trim()
+    .split(' ')[0] // Take only the URL part, ignore any text after it
+    .replace(/\/$/, '')
+    .replace(/\(.*\)/, ''); // Remove any parentheses like (Note: ...)
+
+  const webhookUrl = `${cleanBase}/api/webhook/whatsapp`;
   console.log(`📡 [Handshake] Registering URL: ${webhookUrl}`);
 
   try {
