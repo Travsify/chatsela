@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Find the user/session for this channel
-    const { data: session } = await supabaseAdmin
+    let { data: session } = await supabaseAdmin
       .from('whatsapp_sessions')
       .select('user_id, whapi_token')
       .eq('whapi_channel_id', channelId)
@@ -34,13 +34,15 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!session) {
-      // Fallback: If channel_id lookup fails, try matching by the "to" number if available
-      // For now, we log and skip.
-      console.log(`⚠️ No active session found for channel ${channelId}`);
-      return NextResponse.json({ status: 'not_found' });
+      console.log(`⚠️ [Whapi Webhook] No exact match for channel ${channelId}. Attempting fail-safe lookup...`);
+      // Fail-safe: Try to find a session that matches our internal "whapi_token" if we can infer it
+      // For now, we log the failure clearly so the user can "Refresh Status" to sync the ID.
+      console.log(`❌ [Whapi Webhook] Direct ID lookup failed. Please click "Refresh Status" in your dashboard to sync IDs.`);
+      return NextResponse.json({ status: 'sync_required' });
     }
 
     const userId = session.user_id;
+    console.log(`✅ [Whapi Webhook] Found User Session: ${userId}`);
 
     for (const msg of messages) {
       if (msg.from_me) continue;

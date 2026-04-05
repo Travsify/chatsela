@@ -243,17 +243,22 @@ export async function getWhatsAppStatus() {
       response.status === 409; 
     
     if (isAuth) {
+      console.log(`✅ [Handshake] Authenticated Status: ${response.status}. Syncing Channel ID...`);
       // REGISTER WEBHOOK ONCE CONNECTED
       await registerWhapiWebhook(token);
+
+      const channelId = data.id || data.channel_id || (data.status?.channel_id);
 
       await supabase
         .from('whatsapp_sessions')
         .update({ 
           status: 'connected', 
-          whapi_channel_id: data.id || data.channel_id,
+          whapi_channel_id: channelId,
           updated_at: new Date().toISOString() 
         })
         .eq('user_id', user.id)
+      
+      console.log(`✅ [Handshake] Synced Channel ID: ${channelId}`);
     }
 
     return { authenticated: isAuth }
