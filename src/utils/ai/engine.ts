@@ -234,8 +234,8 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         generate_checkout_link: tool({
           description: 'Generates a secure payment link for a product purchase.',
           parameters: z.object({
-            product_name: z.string().describe('The name of the product the user wants to buy.'),
-            amount: z.number().describe('The unit price of the product.')
+            product_name: z.string(),
+            amount: z.number()
           }),
           execute: async ({ product_name, amount }) => {
             console.log(`🛠️ [Tool] Generating checkout link for ${product_name} ($${amount})`);
@@ -248,7 +248,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         book_appointment: tool({
           description: 'Provides the scheduling link for bookings and consultations.',
           parameters: z.object({
-            confirm: z.boolean().optional().describe('Set to true to confirm the booking request.')
+            confirm_booking: z.boolean().optional()
           }),
           execute: async () => {
             const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
@@ -258,7 +258,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         fetch_tracking: tool({
           description: 'Checks the shipping status of an order using a tracking ID.',
           parameters: z.object({
-            tracking_id: z.string().describe('The numeric or alphanumeric tracking/order ID.')
+            tracking_id: z.string()
           }),
           execute: async ({ tracking_id }) => {
             const status = await fetchExternalTracking(supabase, userId, tracking_id);
