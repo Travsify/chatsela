@@ -9,16 +9,11 @@ export default function Sidebar({ businessName, billingTier }: { businessName?: 
 
   const menuItems = [
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
-    { name: 'Connect Website', href: '/dashboard/connect', icon: '🔌' },
-    { name: 'My Sales Assistant', href: '/dashboard/bot', icon: '🤖' },
-    { name: 'My Products', href: '/dashboard/products', icon: '📦' },
-    { name: 'FAQs', href: '/dashboard/faqs', icon: '❓' },
-    { name: 'Sales Intelligence', href: '/dashboard/leads', icon: '🧠' },
-    { name: 'Sales Tracking', href: '/dashboard/tracking', icon: '📈' },
-
-    { name: 'Earnings & Plans', href: '/dashboard/pricing', icon: '💰' },
-    { name: 'Developer API', href: '/dashboard/developer', icon: '💻' },
-    { name: 'Settings', href: '/dashboard/settings', icon: '⚙️' }
+    { name: '🤖 Bot Identity', href: '/dashboard/bot', icon: '👤' },
+    { name: '🎓 Train Your Bot', href: '/dashboard/train', icon: '🧠' },
+    { name: '📁 Product Catalog', href: '/dashboard/products', icon: '📦' },
+    { name: '💬 Sales & Insights', href: '/dashboard/leads', icon: '📈' },
+    { name: '⚙️ System Settings', href: '/dashboard/settings', icon: '⚙️' }
   ];
 
   return (
