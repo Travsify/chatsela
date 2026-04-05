@@ -172,18 +172,22 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
 // ═══════════════════════════════════════════════════════
 
 export async function handleAIResponse(sender: string, message: string, botId: string) {
+  console.log(`🧠 [AI Engine] ⚡ Processing request for Bot: ${botId}, Sender: ${sender}`);
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: bot } = await supabase
+  const { data: bot, error: botErr } = await supabase
     .from('bots')
     .select('*, profiles(business_name)')
     .eq('id', botId)
     .single();
 
-  if (!bot) return null;
+  if (botErr || !bot) {
+    console.error(`❌ [AI Engine] Bot not found! Error: ${botErr?.message}`);
+    return null;
+  }
 
   const businessName = bot.profiles?.business_name || 'Our Company';
   const botName = bot.name || 'Sales Assistant';
@@ -193,16 +197,21 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   const msg = message.trim();
   const msgLower = msg.toLowerCase();
 
-  const { data: session } = await supabase
+  const { data: session, error: sessionErr } = await supabase
     .from('whatsapp_sessions')
     .select('whapi_channel_id, whapi_token')
     .eq('user_id', userId)
     .single();
 
+  if (sessionErr || !session) {
+    console.error(`❌ [AI Engine] Session/Token not found for User: ${userId}! Error: ${sessionErr?.message}`);
+  }
+
   const channelId = session?.whapi_channel_id || 'unknown';
+  console.log(`🧠 [AI Engine] Linked to Channel ID: ${channelId}`);
 
   // 1. Get Conversation State
-  const { data: lastMemory } = await supabase
+  const { data: lastMemory, error: memErr } = await supabase
     .from('chat_memory')
     .select('current_step, step_data')
     .eq('channel_id', channelId)
@@ -211,9 +220,15 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     .limit(1)
     .single();
 
+  if (memErr && memErr.code !== 'PGRST116') {
+     console.error(`⚠️ [AI Engine] Memory fetch error: ${memErr.message}`);
+  }
+
   let responseText = '';
   let nextStep = null;
   let nextStepData = lastMemory?.step_data || {};
+
+  console.log(`🧠 [AI Engine] Current Step: ${lastMemory?.current_step || 'NONE'}`);
 
   // ── 2a. In Sequence? ───────────────────────────────────────────────────
   if (lastMemory?.current_step) {
@@ -221,6 +236,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     const flow = sequences.find((s: any) => s.intent === intent);
     
     if (flow) {
+      console.log(`🧠 [AI Engine] Continuing Flow: ${intent}`);
       const currentStepObj = flow.steps.find((s: any) => s.id === stepId);
       if (currentStepObj?.save_to) nextStepData[currentStepObj.save_to] = msg;
 
@@ -240,10 +256,11 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         if (nextStepObj) {
           responseText = nextStepObj.prompt;
           nextStep = `${intent}:${nextStepObj.id}`;
+          console.log(`🧠 [AI Engine] Moving to next step: ${nextStep}`);
         } else {
           // Sequence Complete! Trigger Final Action
+          console.log(`🧠 [AI Engine] Flow Complete: ${intent}`);
           if (intent === 'order') {
-            // Generate automated checkout link for a generic amount or based on product lookup
             const checkoutLink = await generateCheckoutLink(supabase, userId, 1500, sender, channelId); 
             responseText = `Excellent! 🍕 I've prepared your order. You can complete your purchase securely here:\n\n${checkoutLink || 'Link pending. Our agent will send it shortly.'}\n\nWe'll notify you once payment is received!`;
           } else {
@@ -253,6 +270,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         }
       }
     } else {
+      console.log(`⚠️ [AI Engine] Flow "${intent}" no longer exists. Resetting.`);
       nextStep = null;
     }
   }
@@ -262,6 +280,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     const isGreeting = /^(hi|hello|hey|start|menu|help|hola|yo|sup|good (morning|evening|afternoon))$/i.test(msgLower);
     
     if (isGreeting) {
+      console.log(`🧠 [AI Engine] Handling Greeting...`);
       responseText = buildWelcomeMessage(bot.welcome_message, menuOptions);
       nextStep = null;
     } else {
@@ -270,6 +289,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
       if (choiceIdx !== -1) {
         const chosenLabel = menuOptions[choiceIdx];
         const intent = categoriseMenuOption(chosenLabel);
+        console.log(`🧠 [AI Engine] User picked menu option: ${chosenLabel} (Intent: ${intent})`);
         const flow = sequences.find((s: any) => s.intent === intent);
         
         if (flow && flow.steps?.length > 0) {
@@ -277,11 +297,13 @@ export async function handleAIResponse(sender: string, message: string, botId: s
           responseText = firstStep.prompt;
           nextStep = `${intent}:${firstStep.id}`;
           nextStepData = {};
+          console.log(`🧠 [AI Engine] Starting Flow: ${nextStep}`);
         } else {
           responseText = await handleIntentOffline(supabase, userId, intent, chosenLabel);
           nextStep = null;
         }
       } else {
+        console.log(`🧠 [AI Engine] No menu match. Attempting SmartMatch...`);
         responseText = await aiSmartMatch(supabase, userId, msg, menuOptions, botName, businessName);
         nextStep = null;
       }
@@ -289,6 +311,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   }
 
   // 3. Log memory with state
+  console.log(`🧠 [AI Engine] Saving memory for Sender: ${sender}`);
   await supabase.from('chat_memory').insert({
     channel_id: channelId,
     customer_phone: sender,
@@ -300,12 +323,25 @@ export async function handleAIResponse(sender: string, message: string, botId: s
 
   // 4. Send via Whapi
   const token = session?.whapi_token;
+  if (!token) console.warn(`❌ [AI Engine] Cannot send response: WHAPI_TOKEN is missing!`);
+  if (!responseText) console.warn(`⚠️ [AI Engine] No response generated for message.`);
+
   if (token && responseText) {
-    await fetch(`${WHAPI_BASE_URL}/messages/text`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: sender, body: responseText }),
-    });
+    console.log(`🧠 [AI Engine] 📤 Sending WhatsApp response via Whapi...`);
+    try {
+      const resp = await fetch(`${WHAPI_BASE_URL}/messages/text`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: sender, body: responseText }),
+      });
+      console.log(`🧠 [AI Engine] Whapi Push Status: ${resp.status}`);
+      if (!resp.ok) {
+        const errData = await resp.json();
+        console.error(`❌ [AI Engine] Whapi Push Failed: ${JSON.stringify(errData)}`);
+      }
+    } catch (whapiErr: any) {
+      console.error(`🔥 [AI Engine] Whapi Network Error: ${whapiErr.message}`);
+    }
   }
 
   return responseText;

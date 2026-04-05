@@ -12,9 +12,18 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  console.log('📡 [Whapi Webhook] 🔥 INCOMING REQUEST RECEIVED');
   try {
-    const body = await req.json();
-    console.log('📡 [Whapi Webhook] Incoming Payload:', JSON.stringify(body, null, 2));
+    const rawBody = await req.text();
+    console.log('📡 [Whapi Webhook] Raw Payload Body:', rawBody);
+    
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (e) {
+      console.error('❌ [Whapi Webhook] Failed to parse JSON body!');
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
 
     // Whapi webhooks include "channel_id" (Instance ID)
     const channelId = body.channel_id;
@@ -25,19 +34,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'ignored' });
     }
 
+    console.log(`📡 [Whapi Webhook] Processing messages for Channel: ${channelId}...`);
+
     // 1. Find the user/session for this channel
-    let { data: session } = await supabaseAdmin
+    let { data: session, error: sessionErr } = await supabaseAdmin
       .from('whatsapp_sessions')
       .select('user_id, whapi_token')
       .eq('whapi_channel_id', channelId)
       .limit(1)
       .single();
 
-    if (!session) {
-      console.log(`⚠️ [Whapi Webhook] No exact match for channel ${channelId}. Attempting fail-safe lookup...`);
+    if (sessionErr || !session) {
+      console.log(`⚠️ [Whapi Webhook] No exact match for channel ${channelId}. SessionError: ${sessionErr?.message}`);
       // Fail-safe: Try to find a session that matches our internal "whapi_token" if we can infer it
-      // For now, we log the failure clearly so the user can "Refresh Status" to sync the ID.
-      console.log(`❌ [Whapi Webhook] Direct ID lookup failed. Please click "Refresh Status" in your dashboard to sync IDs.`);
+      console.log(`❌ [Whapi Webhook] Direct ID lookup failed. User must click "Refresh Handshake".`);
       return NextResponse.json({ status: 'sync_required' });
     }
 
@@ -45,26 +55,34 @@ export async function POST(req: NextRequest) {
     console.log(`✅ [Whapi Webhook] Found User Session: ${userId}`);
 
     for (const msg of messages) {
-      if (msg.from_me) continue;
+      if (msg.from_me) {
+        console.log('📡 [Whapi Webhook] Skipping outgoing message (from_me: true)');
+        continue;
+      }
 
       const sender = msg.from;
       const text = msg.text?.body || msg.body;
-      if (!text) continue;
+      if (!text) {
+        console.log('📡 [Whapi Webhook] Skipping message with no text body.');
+        continue;
+      }
 
-      console.log(`📩 [User ${userId}] Message from ${sender}: ${text}`);
+      console.log(`🚀 [Whapi Webhook] Routing Message from ${sender}: "${text}"`);
 
       // 2. Find the bot for THIS user
-      const { data: bot } = await supabaseAdmin
+      const { data: bot, error: botErr } = await supabaseAdmin
         .from('bots')
         .select('id')
         .eq('user_id', userId)
         .limit(1)
         .single();
 
-      if (!bot) {
-        console.log(`⚠️ No bot configured for user ${userId}.`);
+      if (botErr || !bot) {
+        console.log(`❌ [Whapi Webhook] No bot configured for user ${userId}. BotError: ${botErr?.message}`);
         continue;
       }
+
+      console.log(`🤖 [Whapi Webhook] Triggering AI Engine for Bot ID: ${bot.id}...`);
 
       // 3. Log incoming message
       await supabaseAdmin.from('messages').insert({
@@ -86,23 +104,29 @@ export async function POST(req: NextRequest) {
 
       if (botEnabled) {
         // 5. Trigger AI Logic (Using the user's specific token)
+        console.log(`🧠 [Whapi Webhook] Calling AI Response Handler...`);
         const aiResponse = await handleAIResponse(sender, text, bot.id);
         
         // 6. Log Bot's outgoing message
         if (aiResponse) {
+          console.log(`✅ [Whapi Webhook] AI Response Generated and Sent: "${aiResponse.substring(0, 50)}..."`);
           await supabaseAdmin.from('messages').insert({
             user_id: userId,
             sender: sender,
             body: aiResponse,
             from_me: true
           });
+        } else {
+          console.log('⚠️ [Whapi Webhook] AI Engine returned empty response.');
         }
+      } else {
+        console.log(`⏸️ [Whapi Webhook] Bot disabled for contact ${sender} (Human Handoff active).`);
       }
     }
 
     return NextResponse.json({ status: 'success' });
-  } catch (error) {
-    console.error('Webhook Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  } catch (error: any) {
+    console.error('🔥 [Whapi Webhook] GLOBAL CRASH:', error.message);
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
   }
 }
