@@ -138,13 +138,17 @@ export default function BotConfigPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploading(true);
+    setScrapeResult(null);
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = (reader.result as string).split(',')[1];
       const res = await processDocumentUpload(base64, file.name);
       if (res.success) {
-        const kb = await getKnowledgeBaseDocs();
-        if (kb.success) setKbDocs(kb.documents || []);
+        setCategorizedDrafts(res.categorizedFacts);
+        setDraftSourceUrl(`Document: ${res.fileName}`);
+        setScrapeResult(`✅ PDF Intelligence Extracted. Please review folders.`);
+      } else {
+        setScrapeResult(`❌ Error: ${res.error}`);
       }
       setIsUploading(false);
     };
@@ -177,7 +181,7 @@ export default function BotConfigPage() {
       if (res.success) {
         setCategorizedDrafts(res.categorizedFacts);
         setDraftSourceUrl(res.targetUrl);
-        setScrapeResult(`✅ Intelligence Extracted. Please review folders below.`);
+        setScrapeResult(`✅ Website Intelligence Extracted. Please review folders.`);
       } else {
         setScrapeResult(`❌ Error: ${res.error}`);
       }
@@ -195,11 +199,19 @@ export default function BotConfigPage() {
     const res = await saveCategorizedIntelligence(categorizedDrafts, draftSourceUrl);
     if (res.success) {
       setCategorizedDrafts(null);
-      setScrapeResult(`✅ ${res.count} Facts committed to Knowledge Vault.`);
+      setScrapeResult(`✅ Intelligence sync complete: ${res.count} facts deployed.`);
       const kb = await getKnowledgeBaseDocs();
       if (kb.success) setKbDocs(kb.documents || []);
     }
     setIsSavingDrafts(false);
+  };
+
+  const addDraft = (cat: string) => {
+    if (!categorizedDrafts) return;
+    const newDrafts = { ...categorizedDrafts };
+    if (!newDrafts[cat]) newDrafts[cat] = [];
+    newDrafts[cat].push('');
+    setCategorizedDrafts(newDrafts);
   };
 
   const updateDraft = (cat: string, idx: number, val: string) => {
@@ -272,25 +284,34 @@ export default function BotConfigPage() {
           {/* 📂 Categorized Review Section */}
           {categorizedDrafts && (
             <div style={{ marginTop: '30px', animation: 'fadeIn 0.5s ease-out' }}>
-              <h4 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '20px', color: 'var(--accent-primary)' }}>🗃️ Review Scraped Intelligence</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h4 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--accent-primary)' }}>🗃️ Review Intelligence Folders</h4>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>Source: {draftSourceUrl}</div>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {Object.entries(categorizedDrafts).map(([cat, facts]) => (
+                {Object.entries(categorizedDrafts).sort().map(([cat, facts]) => (
                   <div key={cat} className="glass" style={{ padding: '20px', borderRadius: '16px' }}>
-                    <h5 style={{ textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      📁 {cat} <span style={{ color: 'var(--accent-primary)', fontSize: '10px' }}>({facts.length} facts)</span>
-                    </h5>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h5 style={{ textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        📁 {cat} <span style={{ color: 'var(--accent-primary)', fontSize: '10px' }}>({facts.length})</span>
+                      </h5>
+                      <button onClick={() => addDraft(cat)} style={{ background: 'rgba(0,255,136,0.1)', color: '#00ff88', border: '1px solid rgba(0,255,136,0.2)', borderRadius: '8px', padding: '4px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>➕ Add Fact</button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {facts.map((f, i) => (
-                        <div key={i} style={{ display: 'flex', gap: '10px' }}>
+                        <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-primary)', opacity: 0.5 }} />
                           <input 
                             type="text" 
                             value={f} 
+                            placeholder="Enter business fact..."
                             onChange={(e) => updateDraft(cat, i, e.target.value)} 
-                            style={{ ...INPUT_STYLE, background: 'rgba(255,255,255,0.02)' }} 
+                            style={{ ...INPUT_STYLE, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }} 
                           />
-                          <button onClick={() => removeDraft(cat, i)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                          <button onClick={() => removeDraft(cat, i)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '8px' }}>✕</button>
                         </div>
                       ))}
+                      {facts.length === 0 && <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>No facts extracted for this category. Click "Add Fact" to manual entries.</p>}
                     </div>
                   </div>
                 ))}
@@ -301,7 +322,7 @@ export default function BotConfigPage() {
                 className="glow-btn" 
                 style={{ marginTop: '24px', width: '100%' }}
               >
-                {isSavingDrafts ? '⌛ Committing Facts...' : '✅ Approve & Store in Knowledge Vault'}
+                {isSavingDrafts ? '⌛ Deploying Intelligence...' : '🚀 Finalize & Go Live'}
               </button>
             </div>
           )}

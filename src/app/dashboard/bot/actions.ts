@@ -26,33 +26,23 @@ export async function processDocumentUpload(base64Data: string, fileName: string
     if (!textContent.trim()) return { success: false, error: 'No readable text found in document.' };
 
     const payload = {
-      model: 'gpt-4o-mini', // Internal identifier (not visible to user)
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: `You are extracting verified business facts from an uploaded document. Extract ONLY real, factual information. Return a JSON object: { "facts": ["fact 1", "fact 2", ...] }.`
+          content: `You are an elite business analyst. Extract EVERY critical fact from the provided document text. 
+          Categorize each fact into one of: 'about', 'products', 'services', 'features', 'pricing'. 
+          Return ONLY a JSON object: { "categorizedFacts": { "about": ["..."], "products": ["..."], "services": ["..."], "features": ["..."], "pricing": ["..."] } }.`
         },
-        { role: 'user', content: `Document "${fileName}" content:\n\n${textContent.substring(0, 12000)}` }
+        { role: 'user', content: `Document Intelligence Feed ("${fileName}"):\n\n${textContent.substring(0, 15000)}` }
       ],
       response_format: { type: 'json_object' }
     };
 
     const aiResp = await executeChatSelaIntelligence(payload);
-    const { facts } = JSON.parse(aiResp.choices[0].message.content);
+    const { categorizedFacts } = JSON.parse(aiResp.choices[0].message.content);
 
-    if (facts?.length > 0) {
-      const inserts = facts.map((f: string) => ({
-        user_id: user.id,
-        content: f,
-        source_type: 'document',
-        source_url: fileName,
-        metadata: { added_at: new Date().toISOString(), file_name: fileName }
-      }));
-
-      await supabase.from('ai_knowledge_base').insert(inserts);
-    }
-
-    return { success: true, count: facts?.length || 0, fileName };
+    return { success: true, categorizedFacts: categorizedFacts || {}, fileName };
   } catch (err: any) {
     console.error(`🔥 [Doc Upload] Failed:`, err.message);
     return { success: false, error: err.message };
