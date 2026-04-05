@@ -38,16 +38,16 @@ function resolveMenuChoice(msg: string, menuOptions: string[]): number {
 
 function categoriseMenuOption(label: string): string {
   const l = label.toLowerCase();
-  if (/product|catalog|shop|item|collection|service|offer/.test(l)) return 'products';
-  if (/faq|question|help|info|know|about|learn/.test(l)) return 'faqs';
-  if (/human|agent|support|team|speak|call|contact|staff|person/.test(l)) return 'human';
-  if (/price|pric|cost|fee|rate|plan|subscri|package/.test(l)) return 'pricing';
-  if (/book|appoint|schedule|meet|session|demo|slot|reserv/.test(l)) return 'booking';
-  if (/order|buy|purchase|checkout|cart/.test(l)) return 'order';
-  if (/track|status|find|where|deliver/.test(l)) return 'tracking';
+  if (/product|catalog|shop|item|collection|service|offer|inventory|stock|buy|purchase/.test(l)) return 'products';
+  if (/faq|question|help|info|know|about|learn|details|understand/.test(l)) return 'faqs';
+  if (/human|agent|support|team|speak|call|contact|staff|person|real people/.test(l)) return 'human';
+  if (/price|pric|cost|fee|rate|plan|subscri|package|how much|amount/.test(l)) return 'pricing';
+  if (/book|appoint|schedule|meet|session|demo|slot|reserv|consult/.test(l)) return 'booking';
+  if (/order|buy|purchase|checkout|cart|pay|bill/.test(l)) return 'order';
+  if (/track|status|find|where|deliver|shipping/.test(l)) return 'tracking';
   if (/logistics|freight|cargo|shipping|quote|origin|destination|weight/.test(l)) return 'logistics';
-  if (/course|class|enrol|learn|educat|lesson/.test(l)) return 'education';
-  if (/portfolio|work|project|gallery|case/.test(l)) return 'portfolio';
+  if (/course|class|enrol|learn|educat|lesson|training/.test(l)) return 'education';
+  if (/portfolio|work|project|gallery|case|examples/.test(l)) return 'portfolio';
   return 'generic';
 }
 
@@ -268,11 +268,17 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         } else {
           // Sequence Complete! Trigger Final Action
           console.log(`🧠 [AI Engine] Flow Complete: ${intent}`);
-          if (intent === 'order') {
-            const checkoutLink = await generateCheckoutLink(supabase, userId, 1500, sender, channelId); 
-            responseText = `Excellent! 🍕 I've prepared your order. You can complete your purchase securely here:\n\n${checkoutLink || 'Link pending. Our agent will send it shortly.'}\n\nWe'll notify you once payment is received!`;
+          if (intent === 'order' || intent === 'products' || intent === 'pricing') {
+             // Forcing a checkout/catalog loop
+             const { data: products } = await supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true);
+             if (products?.length) {
+                const list = products.slice(0, 5).map((p:any, i:number) => `${i + 1}. *${p.name}* — ${p.currency === 'NGN' ? '₦' : '$'}${Number(p.price).toLocaleString()}`).join('\n\n');
+                responseText = `Excellent choice! 🛍️ Here's our catalog again. You can complete your purchase securely via the link below:\n\n${list}\n\n_Reply with a number to get a checkout link instantly!_`;
+             } else {
+               responseText = `Thanks for sharing those details! 🤝 I've noted your interest. Anything else I can help you with right now?`;
+             }
           } else {
-            responseText = `Thanks for sharing those details! 🤝 Our team has received your information and we'll get back to you shortly.\n\nAnything else I can help with?`;
+            responseText = `Thanks for sharing those details! 🤝 I've noted everything down. What else can I help you finalize today?`;
           }
           nextStep = null; 
         }
@@ -286,10 +292,24 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   // ── 2b. Start New Sequence or Handle New Intent? ───────────────────────────
   if (!responseText) {
     const isGreeting = /^(hi|hello|hey|start|menu|help|hola|yo|sup|good (morning|evening|afternoon))$/i.test(msgLower);
-    
+    const isDigit = /^\d+$/.test(msg.trim());
+
     if (isGreeting) {
       console.log(`🧠 [AI Engine] Handling Greeting...`);
       responseText = buildWelcomeMessage(bot.welcome_message, menuOptions);
+      nextStep = null;
+    } else if (isDigit) {
+      const idx = parseInt(msg.trim()) - 1;
+      console.log(`🧠 [AI Engine] User sent digit: ${idx + 1}. Checking product context...`);
+      
+      const { data: products } = await supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true);
+      if (products && products[idx]) {
+        const p = products[idx];
+        const checkoutLink = await generateCheckoutLink(supabase, userId, Number(p.price), sender, channelId);
+        responseText = `Excellent choice! 🛍️ *${p.name}* is one of our favorites. \n\nYou can complete your purchase securely here:\n\n${checkoutLink || 'Link pending. Our team will verify and send it shortly.'}\n\nWe'll notify you once payment is received! ✨`;
+      } else {
+        responseText = buildMenuRepeat(menuOptions);
+      }
       nextStep = null;
     } else {
       const choiceIdx = resolveMenuChoice(msgLower, menuOptions);
@@ -307,7 +327,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
           nextStepData = {};
           console.log(`🧠 [AI Engine] Starting Flow: ${nextStep}`);
         } else {
-          responseText = await handleIntentOffline(supabase, userId, intent, chosenLabel);
+          responseText = await handleIntentOffline(supabase, userId, intent, chosenLabel, sender, channelId);
           nextStep = null;
         }
       } else {
@@ -355,27 +375,35 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   return responseText;
 }
 
-async function handleIntentOffline(supabase: any, userId: string, intent: string, label: string): Promise<string> {
+async function handleIntentOffline(supabase: any, userId: string, intent: string, label: string, sender: string, channelId: string): Promise<string> {
   switch (intent) {
     case 'products':
+    case 'pricing':
     case 'order': {
       const { data: products } = await supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true);
       if (products?.length) {
-        const list = products.slice(0, 10).map((p:any, i:number) => `${i + 1}. *${p.name}* — ${p.currency === 'NGN' ? '₦' : '$'}${Number(p.price).toLocaleString()}`).join('\n\n');
-        return `📦 Here's what we offer:\n\n${list}\n\n_Interested in any? Just tell me which one!_`;
+        const list = products.slice(0, 5).map((p:any, i:number) => `${i + 1}. *${p.name}* — ${p.currency === 'NGN' ? '₦' : '$'}${Number(p.price).toLocaleString()}`).join('\n\n');
+        return `📦 *${label}*\n\nHere are our top offers:\n\n${list}\n\n_Which one would you like to order? Send the number!_`;
       }
-      return `We're updating our catalog right now! 🙏 A team member will message you shortly.`;
+      return `We're updating our ${label} right now! 🚀 Check back in a few minutes, or type another question and I'll help you immediately.`;
     }
     case 'faqs': {
       const { data: faqs } = await supabase.from('faqs').select('*').eq('user_id', userId).limit(5);
       if (faqs?.length) {
-        const list = faqs.map((f:any, i:number) => `*Q${i + 1}: ${f.question}*\n${f.answer}`).join('\n\n');
-        return `❓ Common questions:\n\n${list}`;
+        const list = faqs.map((f:any, i:number) => `*Q: ${f.question}*\n💡 ${f.answer}`).join('\n\n');
+        return `❓ *Common Questions*\n\n${list}\n\nAnything else you'd like to know?`;
       }
-      return `Got a question? Just type it out and I'll help! 😊`;
+      return `I'm ready to answer any questions! 😊 Just type what's on your mind and I'll find the information for you.`;
     }
-    case 'human': return `🧑‍💼 Connecting you to a team member now... Please hold.`;
-    default: return `Great choice! A team member will follow up with details about *${label}* shortly. 😊`;
+    case 'booking': {
+      // Logic for closing a service booking
+      return `📅 *Booking & Consultation*\n\nI can help you secure a spot right now! Please tell me your preferred date and time, or ask about our availability.`;
+    }
+    case 'human': {
+      // Instead of handing off, we try to solve it first
+      return `🧑‍💼 *Priority Support*\n\nI understand you'd like to speak with a person. To help our team resolve this instantly, could you briefly describe what you need? (e.g., Refund, Custom Order, or Technical Issue). I might be able to solve it for you right now! 🦾`;
+    }
+    default: return `Great choice! I'm an expert in *${label}*. How can I help you get started with this today? 😊`;
   }
 }
 
@@ -388,9 +416,20 @@ async function aiSmartMatch(
   businessName: string
 ): Promise<string> {
   const msgLower = message.toLowerCase();
-  if (/price|cost|how.?much/.test(msgLower)) {
+  
+  // 1. Direct Pricing match
+  if (/price|cost|how.?much|amount|pay|bill|buy/.test(msgLower)) {
     const { data: ps } = await supabase.from('products').select('name, price, currency').eq('user_id', userId).eq('is_active', true);
-    if (ps?.length) return `💰 Our pricing:\n\n` + ps.map((p:any) => `• *${p.name}* — ${p.currency === 'NGN' ? '₦' : '$'}${Number(p.price).toLocaleString()}`).join('\n');
+    if (ps?.length) {
+       const list = ps.map((p:any) => `• *${p.name}* — ${p.currency === 'NGN' ? '₦' : '$'}${Number(p.price).toLocaleString()}`).join('\n');
+       return `💰 *Our Current Pricing*\n\n${list}\n\n_Type the name of any product to get a secure checkout link!_`;
+    }
   }
+
+  // 2. Help/Support match
+  if (/help|support|manual|guide|work/.test(msgLower)) {
+     return `💡 *I'm here to help!* You can use our menu to browse products, track orders, or get FAQs. Just reply with a number or tell me what you're looking for!`;
+  }
+
   return buildMenuRepeat(menuOptions);
 }
