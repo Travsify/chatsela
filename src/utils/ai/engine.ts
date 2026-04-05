@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildSystemPrompt } from './prompts';
 
 const WHAPI_BASE_URL = 'https://gate.whapi.cloud';
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // ═══════════════════════════════════════════════════════
 // External Integration Helpers
@@ -110,80 +110,74 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
 }
 
 // ═══════════════════════════════════════════════════════
-// Direct Anthropic API Call (No Magic)
+// Direct OpenAI API Call (The New Standard)
 // ═══════════════════════════════════════════════════════
 
-async function callClaudeDirectly(payload: any) {
-  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is missing.');
+async function callOpenAIDirectly(payload: any) {
+  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is missing on Render. Please add it to environment variables.');
 
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json'
+      'Authorization': `Bearer ${OPENAI_API_KEY.trim()}`,
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
   });
 
+  const body = await resp.json();
   if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Claude API Error (${resp.status}): ${err}`);
+    throw new Error(`OpenAI API Error (${resp.status}): ${JSON.stringify(body)}`);
   }
 
-  return await resp.json();
+  return body;
 }
 
-async function handleToolExecution(toolUse: any, supabase: any, userId: string, sender: string, channelId: string, profile: any) {
-  const { name, input, id } = toolUse;
-  console.log(`🛠️ [Tool] Executing ${name} with ID: ${id}`);
+async function handleToolCall(toolCall: any, supabase: any, userId: string, sender: string, channelId: string, profile: any) {
+  const { name, arguments: argsString } = toolCall.function;
+  const args = JSON.parse(argsString);
+  console.log(`🛠️ [OpenAI Tool] Executing ${name}...`);
 
   let result = '';
 
   if (name === 'generate_checkout_link') {
-    const link = await generateCheckoutLink(supabase, userId, input.amount, sender, channelId);
+    const link = await generateCheckoutLink(supabase, userId, args.amount, sender, channelId);
     result = link ? `SUCCESS: Generated link: ${link}` : `FAILURE: Could not generate link.`;
   } else if (name === 'book_appointment') {
     const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
     result = `Link: https://cal.com/${calId}`;
   } else if (name === 'fetch_tracking') {
-    const status = await fetchExternalTracking(supabase, userId, input.tracking_id);
-    result = status || `No tracking info found for ID ${input.tracking_id}.`;
+    const status = await fetchExternalTracking(supabase, userId, args.tracking_id);
+    result = status || `No tracking info found for ID ${args.tracking_id}.`;
   }
 
   return {
-    type: 'tool_result',
-    tool_use_id: id,
+    tool_call_id: toolCall.id,
+    role: 'tool',
+    name: name,
     content: result
   };
 }
 
 // ═══════════════════════════════════════════════════════
-// Background Insight Generator (Direct Call)
+// Background Insight Generator (OpenAI)
 // ═══════════════════════════════════════════════════════
 
 async function generateChatInsight(supabase: any, userId: string, phone: string, history: any[]) {
   try {
-    const messages = history.map(h => ({ role: h.role, content: h.content }));
+    const messages = history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content }));
     const payload = {
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 500,
-      system: `Analyze chat history. Respond ONLY with a JSON object: { "summary": "...", "sentiment": "positive|neutral|negative", "intent": "inquiry|purchase|support", "valueEstimate": number, "nextStep": "..." }`,
-      messages: [...messages, { role: 'user', content: 'Extract conversation insights as requested.' }]
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: `Analyze the conversation. Respond ONLY with raw JSON: { "summary": "...", "sentiment": "positive|neutral|negative", "intent": "inquiry|purchase|support", "valueEstimate": number, "nextStep": "..." }` },
+        ...messages,
+        { role: 'user', content: 'Generate insights for this conversation.' }
+      ],
+      response_format: { type: "json_object" }
     };
 
-    let result;
-    try {
-      result = await callClaudeDirectly(payload);
-    } catch (e: any) {
-      if (e.message.includes('404')) {
-        payload.model = 'claude-3-haiku-20240307';
-        result = await callClaudeDirectly(payload);
-      } else throw e;
-    }
-
-    const text = result.content[0].text;
-    const object = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
+    const result = await callOpenAIDirectly(payload);
+    const object = JSON.parse(result.choices[0].message.content);
 
     await supabase.from('chat_insights').upsert({
       user_id: userId,
@@ -197,16 +191,16 @@ async function generateChatInsight(supabase: any, userId: string, phone: string,
     }, { onConflict: 'user_id, customer_phone' });
 
   } catch (err: any) {
-    console.error(`🔥 [AI Insights] Computation failed:`, err.message);
+    console.error(`🔥 [AI Insights] OpenAI Computation failed:`, err.message);
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// Main Entry Point
+// Main Entry Point (OpenAI Migration)
 // ═══════════════════════════════════════════════════════
 
 export async function handleAIResponse(sender: string, message: string, botId: string) {
-  console.log(`🧠 [AI Engine] DIRECT CLAUDE: Processing Bot: ${botId}, Sender: ${sender}`);
+  console.log(`🧠 [AI Engine] OPENAI MIGRATION: Processing Bot: ${botId}, Sender: ${sender}`);
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
   const { data: bot } = await supabase.from('bots').select('*').eq('id', botId).single();
@@ -227,75 +221,96 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   if (!whapiToken) return null;
 
   const { data: history } = await supabase.from('chat_memory').select('role, content').eq('customer_phone', sender).order('created_at', { ascending: false }).limit(10);
-  const contextMessages = (history || []).reverse();
-  const chatMessages = [...contextMessages, { role: 'user', content: message }];
+  const chatMessages: any[] = (history || []).reverse().map(h => ({
+    role: h.role === 'assistant' ? 'assistant' : 'user',
+    content: h.content
+  }));
+  chatMessages.push({ role: 'user', content: message });
 
   const systemPrompt = buildSystemPrompt(profile?.business_name || 'Business', productsResult.data || [], faqsResult.data || [], kbResult.data || []);
 
   const tools = [
     {
-      name: 'generate_checkout_link',
-      description: 'Generates a secure paylink for a purchase.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          product_name: { type: 'string' },
-          amount: { type: 'number' }
-        },
-        required: ['product_name', 'amount']
+      type: 'function',
+      function: {
+        name: 'generate_checkout_link',
+        description: 'Generates a secure paylink for a purchase.',
+        parameters: {
+          type: 'object',
+          properties: {
+            product_name: { type: 'string', description: 'Name of the product' },
+            amount: { type: 'number', description: 'Price amount' }
+          },
+          required: ['product_name', 'amount']
+        }
       }
     },
     {
-      name: 'book_appointment',
-      description: 'Provides the scheduling link.',
-      input_schema: { type: 'object', properties: { confirm: { type: 'boolean' } }, required: ['confirm'] }
+      type: 'function',
+      function: {
+        name: 'book_appointment',
+        description: 'Provides the scheduling link for bookings.',
+        parameters: {
+          type: 'object',
+          properties: {
+            confirm: { type: 'boolean', description: 'Confirm booking' }
+          },
+          required: ['confirm']
+        }
+      }
     },
     {
-      name: 'fetch_tracking',
-      description: 'Checks order shipping status.',
-      input_schema: { type: 'object', properties: { tracking_id: { type: 'string' } }, required: ['tracking_id'] }
+      type: 'function',
+      function: {
+        name: 'fetch_tracking',
+        description: 'Checks order shipping status from tracking ID.',
+        parameters: {
+          type: 'object',
+          properties: {
+            tracking_id: { type: 'string', description: 'Tracking or Order ID' }
+          },
+          required: ['tracking_id']
+        }
+      }
     }
   ];
 
   try {
-    let payload = {
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: chatMessages,
-      tools: tools
+    let payload: any = {
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemPrompt }, ...chatMessages],
+      tools: tools,
+      tool_choice: 'auto'
     };
 
-    let result = await callClaudeDirectly(payload);
+    let response = await callOpenAIDirectly(payload);
     let finalContent = '';
+    const responseMessage = response.choices[0].message;
 
-    // Handle Tool Execution Loop (Native)
-    if (result.stop_reason === 'tool_use') {
-      const toolUseBlocks = result.content.filter((c: any) => c.type === 'tool_use');
-      const textBlocks = result.content.filter((c: any) => c.type === 'text');
-      finalContent += textBlocks.map((t: any) => t.text).join('\n');
+    if (responseMessage.tool_calls) {
+      finalContent = responseMessage.content || '';
+      
+      const toolResults = await Promise.all(
+        responseMessage.tool_calls.map((tc: any) => handleToolCall(tc, supabase, userId, sender, session.whapi_channel_id, profile))
+      );
 
-      const toolResults = await Promise.all(toolUseBlocks.map((tu: any) => handleToolExecution(tu, supabase, userId, sender, session.whapi_channel_id, profile)));
-
-      // Call Claude again with results
       const nextPayload = {
         ...payload,
         messages: [
-          ...chatMessages,
-          { role: 'assistant', content: result.content },
-          { role: 'user', content: toolResults }
+          ...payload.messages,
+          responseMessage,
+          ...toolResults
         ]
       };
-      
-      const nextResult = await callClaudeDirectly(nextPayload);
-      finalContent += nextResult.content.map((c: any) => c.text).filter(Boolean).join('\n');
+
+      const nextResponse = await callOpenAIDirectly(nextPayload);
+      finalContent += (nextResponse.choices[0].message.content || '');
     } else {
-      finalContent = result.content.map((c: any) => c.text).join('\n');
+      finalContent = responseMessage.content;
     }
 
-    // Send WhatsApp Response
     if (finalContent) {
-      console.log(`🧠 [AI Engine] 📤 Sending response...`);
+      console.log(`🧠 [AI Engine] 📤 Sending OpenAI response...`);
       await fetch(`${WHAPI_BASE_URL}/messages/text`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${whapiToken}`, 'Content-Type': 'application/json' },
@@ -303,7 +318,6 @@ export async function handleAIResponse(sender: string, message: string, botId: s
       });
     }
 
-    // Log Memory & Background Insights
     await Promise.all([
       supabase.from('chat_memory').insert([
         { channel_id: session.whapi_channel_id, customer_phone: sender, role: 'user', content: message },
@@ -315,7 +329,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     return finalContent;
 
   } catch (err: any) {
-    console.error(`🔥 [AI Engine] Direct Claude Failed:`, err.message);
+    console.error(`🔥 [AI Engine] OpenAI Migration Failed:`, err.message);
     return null;
   }
 }
