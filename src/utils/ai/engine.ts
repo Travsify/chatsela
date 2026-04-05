@@ -227,15 +227,15 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   // 4. Trigger Claude Agent
   try {
     const { text } = await generateText({
-      model: anthropic('claude-3-5-sonnet-20241022'), 
+      model: anthropic('claude-3-5-sonnet-20240620'), 
       system: systemPrompt,
       messages: chatMessages,
       tools: {
         generate_checkout_link: tool({
           description: 'Generates a secure payment link for a product purchase.',
           parameters: z.object({
-            product_name: z.string().describe('Product name'),
-            amount: z.number().describe('Product price')
+            product_name: z.string(),
+            amount: z.number()
           }),
           execute: async ({ product_name, amount }) => {
             console.log(`🛠️ [Tool] Generating checkout link for ${product_name} ($${amount})`);
@@ -248,7 +248,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         book_appointment: tool({
           description: 'Provides the scheduling link for bookings and consultations.',
           parameters: z.object({
-            confirm: z.boolean().describe('Confirm booking')
+            confirm: z.boolean().optional()
           }),
           execute: async () => {
             const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
