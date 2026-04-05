@@ -173,9 +173,30 @@ export default function WhatsAppConnector() {
       )}
 
       {status === 'connected' && (
-        <div style={{ padding: '20px', borderRadius: '16px', background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.1)' }}>
-          <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚡</div>
-          <button className="glass-hover" style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '12px' }}>Manage Sessions</button>
+        <div style={{ padding: '20px', borderRadius: '16px', background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
+          <div style={{ fontSize: '32px' }}>⚡</div>
+          <button 
+            onClick={fetchStatus} 
+            disabled={loading}
+            className="glass-hover"
+            style={{ 
+              background: 'var(--grad-primary)', 
+              border: 'none', 
+              color: '#000', 
+              padding: '12px 24px', 
+              borderRadius: '12px', 
+              fontSize: '14px', 
+              fontWeight: 700, 
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            {loading ? <div className="spinner" style={{ width: '14px', height: '14px', border: '2px solid rgba(0,0,0,0.1)', borderTopColor: '#000', borderRadius: '50%' }}></div> : '🔄'} 
+            Refresh Handshake
+          </button>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Trigger this if your bot stops responding to messages.</p>
         </div>
       )}
 

@@ -23,14 +23,14 @@ export default async function DashboardLayout({
     .single();
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', backgroundColor: 'var(--bg-dark)', color: '#fff' }}>
+    <div className="dashboard-container">
       <Sidebar 
         businessName={profile?.business_name || user.email?.split('@')[0]} 
         billingTier={profile?.billing_tier} 
       />
-      <div style={{ flex: 1, display: 'flex', gap: '30px', padding: '40px 40px 40px 0', overflowY: 'auto', height: '100vh' }}>
+      <main className="main-content">
         {children}
-      </div>
+      </main>
     </div>
   );
 }
