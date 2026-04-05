@@ -43,11 +43,12 @@ function categoriseMenuOption(label: string): string {
   if (/human|agent|support|team|speak|call|contact|staff|person|real people/.test(l)) return 'human';
   if (/price|pric|cost|fee|rate|plan|subscri|package|how much|amount/.test(l)) return 'pricing';
   if (/book|appoint|schedule|meet|session|demo|slot|reserv|consult/.test(l)) return 'booking';
-  if (/order|buy|purchase|checkout|cart|pay|bill/.test(l)) return 'order';
+  if (/order|buy|purchase|checkout|cart|pay|bill|invest|subscribe/.test(l)) return 'order';
   if (/track|status|find|where|deliver|shipping/.test(l)) return 'tracking';
   if (/logistics|freight|cargo|shipping|quote|origin|destination|weight/.test(l)) return 'logistics';
   if (/course|class|enrol|learn|educat|lesson|training/.test(l)) return 'education';
   if (/portfolio|work|project|gallery|case|examples/.test(l)) return 'portfolio';
+  if (/discount|deal|promo|coupon|special|sale/.test(l)) return 'deal';
   return 'generic';
 }
 
@@ -141,8 +142,8 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
       sessionBody.append('line_items[0][price_data][unit_amount]', Math.round(amount * 100).toString());
       sessionBody.append('line_items[0][quantity]', '1');
       sessionBody.append('mode', 'payment');
-      sessionBody.append('success_url', `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?status=success`);
-      sessionBody.append('cancel_url', `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?status=cancel`);
+      sessionBody.append('success_url', `${process.env.NEXT_PUBLIC_SITE_URL}/success`);
+      sessionBody.append('cancel_url', `${process.env.NEXT_PUBLIC_SITE_URL}/canceled`);
       sessionBody.append('metadata[userId]', userId);
       sessionBody.append('metadata[customerPhone]', customerPhone);
       sessionBody.append('metadata[channelId]', channelId);
@@ -273,12 +274,16 @@ export async function handleAIResponse(sender: string, message: string, botId: s
              const { data: products } = await supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true);
              if (products?.length) {
                 const list = products.slice(0, 5).map((p:any, i:number) => `${i + 1}. *${p.name}* — ${p.currency === 'NGN' ? '₦' : '$'}${Number(p.price).toLocaleString()}`).join('\n\n');
-                responseText = `Excellent choice! 🛍️ Here's our catalog again. You can complete your purchase securely via the link below:\n\n${list}\n\n_Reply with a number to get a checkout link instantly!_`;
+                responseText = `Excellent choice! 🛍️ Here's our catalog again. Reply with a number to get your secure checkout link immediately:\n\n${list}`;
              } else {
-               responseText = `Thanks for sharing those details! 🤝 I've noted your interest. Anything else I can help you with right now?`;
+               responseText = `Thanks for sharing those details! 🤝 I've noted your interest. Shall I send over a fast-track checkout link?`;
              }
+          } else if (intent === 'booking') {
+             const { data: profile } = await supabase.from('profiles').select('contact_email, business_name').eq('id', userId).single();
+             const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
+             responseText = `Fantastic! 📅 I have all the details. To confirm your booking and secure your spot immediately, please choose a time here: \n\n🔗 https://cal.com/${calId}\n\nLet me know once you've confirmed!`;
           } else {
-            responseText = `Thanks for sharing those details! 🤝 I've noted everything down. What else can I help you finalize today?`;
+            responseText = `Thanks for providing that! Everything is set on our end. Can I finalize an order or book a spot for you now?`;
           }
           nextStep = null; 
         }
@@ -379,11 +384,12 @@ async function handleIntentOffline(supabase: any, userId: string, intent: string
   switch (intent) {
     case 'products':
     case 'pricing':
-    case 'order': {
+    case 'order':
+    case 'deal': {
       const { data: products } = await supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true);
       if (products?.length) {
         const list = products.slice(0, 5).map((p:any, i:number) => `${i + 1}. *${p.name}* — ${p.currency === 'NGN' ? '₦' : '$'}${Number(p.price).toLocaleString()}`).join('\n\n');
-        return `📦 *${label}*\n\nHere are our top offers:\n\n${list}\n\n_Which one would you like to order? Send the number!_`;
+        return `📦 *${label}*\n\nHere are our top offers right now:\n\n${list}\n\n_Which one would you like to order? Send the number for an instant checkout link!_`;
       }
       return `We're updating our ${label} right now! 🚀 Check back in a few minutes, or type another question and I'll help you immediately.`;
     }
@@ -397,13 +403,13 @@ async function handleIntentOffline(supabase: any, userId: string, intent: string
     }
     case 'booking': {
       // Logic for closing a service booking
-      return `📅 *Booking & Consultation*\n\nI can help you secure a spot right now! Please tell me your preferred date and time, or ask about our availability.`;
+      return `📅 *Booking & Consultation*\n\nI can help you secure a spot right now! Do you have a preferred date, or shall I send you our direct calendar link to lock in your time?`;
     }
     case 'human': {
       // Instead of handing off, we try to solve it first
-      return `🧑‍💼 *Priority Support*\n\nI understand you'd like to speak with a person. To help our team resolve this instantly, could you briefly describe what you need? (e.g., Refund, Custom Order, or Technical Issue). I might be able to solve it for you right now! 🦾`;
+      return `⚡ *Automated Priority Resolution*\n\nOur intelligent assistant is equipped to handle this for you instantly. Could you briefly describe what you need? (e.g., Refund, Custom Order, or Technical Issue). I can process your request right here! 🦾`;
     }
-    default: return `Great choice! I'm an expert in *${label}*. How can I help you get started with this today? 😊`;
+    default: return `Great choice! I'm ready to assist with *${label}*. How can I help you complete your task today? 😊`;
   }
 }
 
@@ -426,10 +432,11 @@ async function aiSmartMatch(
     }
   }
 
-  // 2. Help/Support match
-  if (/help|support|manual|guide|work/.test(msgLower)) {
-     return `💡 *I'm here to help!* You can use our menu to browse products, track orders, or get FAQs. Just reply with a number or tell me what you're looking for!`;
+  // 2. Help/Support match -> Steer back to automated funnel
+  if (/help|support|manual|guide|work|issue|stuck|problem/.test(msgLower)) {
+     return `💡 *Automated Resolution Desk*\n\nI can solve this for you. Please describe your issue in a few words (e.g., 'Track my order' or 'View products'), or reply with a number from our menu!`;
   }
 
-  return buildMenuRepeat(menuOptions);
+  // 3. Ambiguous -> Steer to sale
+  return `I didn't quite catch that! 😅 But I can absolutely help you browse our products, check prices, or answer questions.\n\nHere's what I can do automatically:\n${menuOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}\n\n_Reply with a number or ask for something specific!_`;
 }
