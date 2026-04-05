@@ -1,8 +1,0 @@
-[2026-04-04T20:17:02.956Z] Phone: 2349056963124 | Status: 404 | Body: {"error":"Channel not found","requestId":"35e37235-7d68-425f-be14-720e665b0449"}
-[2026-04-04T20:19:18.198Z] Phone: 2349056963124 | Status: 500 | Body: {"error":{"code":500,"message":"Internal Error"}}
-[2026-04-04T20:22:04.384Z] Phone: 2349056963124 | Manager Status: 404 | Body: {"message":"not found","errors":[{"path":"/v1/channels/undefined/login","message":"not found"}]}
-[2026-04-04T20:24:08.444Z] Phone: 2349056963124 | Manager Status: 404 | Body: {"message":"not found","errors":[{"path":"/v1/channels/undefined/login","message":"not found"}]}
-[2026-04-04T20:26:06.987Z] Phone: 2349056963124 | Manager Status: 404 | Body: {"message":"not found","errors":[{"path":"/v1/channels/THOROD-WLVB2/login","message":"not found"}]}
-[2026-04-04T20:30:04.906Z] Phone: 2349056963124 | Gateway Status: 405 | Body: {"error":{"code":500,"message":"POST method not allowed","details":"/users/login POST method not allowed"}}
-[2026-04-04T20:32:13.047Z] Phone: 2349056963124 | GET Status: 500 | Body: {"error":{"code":500,"message":"Internal Error"}}
-[2026-04-04T20:35:23.396Z] Phone: 2349056963124 | Status: 404 | Body: {"error":"Channel not found","requestId":"267f9932-9794-4838-8573-86f8fd2d6af4"}
