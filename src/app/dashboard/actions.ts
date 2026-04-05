@@ -64,14 +64,23 @@ async function provisionWhapiChannel(userId: string) {
  * Registers our API route as the handler for this Whapi instance.
  */
 async function registerWhapiWebhook(token: string) {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  // 1. Priority: Environment variable
+  // 2. Fallback: Detection (if in server action context)
+  let siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  
+  if (!siteUrl && typeof window === 'undefined') {
+    // If we're on Render, we can sometimes infer this
+    // For now, we strongly encourage the ENV, but we log the attempt
+    console.log('⚠️ [Handshake] NEXT_PUBLIC_SITE_URL is missing. Check Render settings!');
+  }
+
   if (!siteUrl) {
-    console.error('❌ NEXT_PUBLIC_SITE_URL not set. Webhook registration skipped.');
+    console.error('❌ [Handshake] Webhook registration failed: SITE_URL not found.');
     return;
   }
 
-  const webhookUrl = `${siteUrl}/api/webhook/whatsapp`;
-  console.log(`📡 Registering Webhook: ${webhookUrl}`);
+  const webhookUrl = `${siteUrl.replace(/\/$/, '')}/api/webhook/whatsapp`;
+  console.log(`📡 [Handshake] Registering URL: ${webhookUrl}`);
 
   try {
     const response = await fetch(`${WHAPI_BASE_URL}/settings`, {

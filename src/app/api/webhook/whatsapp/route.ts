@@ -14,13 +14,14 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    
+    console.log('📡 [Whapi Webhook] Incoming Payload:', JSON.stringify(body, null, 2));
+
     // Whapi webhooks include "channel_id" (Instance ID)
     const channelId = body.channel_id;
     const messages = body.messages || [];
 
     if (!channelId) {
-      console.log('⚠️ Webhook received without channel_id. Skipping.');
+      console.log('⚠️ [Whapi Webhook] Received without channel_id. Skipping.');
       return NextResponse.json({ status: 'ignored' });
     }
 
