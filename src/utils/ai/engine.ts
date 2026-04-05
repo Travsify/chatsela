@@ -247,7 +247,9 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         }),
         book_appointment: tool({
           description: 'Provides the scheduling link for bookings and consultations.',
-          parameters: z.object({}),
+          parameters: z.object({
+            confirm: z.boolean().optional().describe('Set to true to confirm the booking request.')
+          }),
           execute: async () => {
             const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
             return `Link: https://cal.com/${calId}`;
