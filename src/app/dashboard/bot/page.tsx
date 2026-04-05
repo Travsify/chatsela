@@ -72,6 +72,7 @@ export default function BotConfigPage() {
   const [magicInput, setMagicInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
+  const [scrapingPhase, setScrapingPhase] = useState<string | null>(null);
   const [scrapeResult, setScrapeResult] = useState<string | null>(null);
 
   const [saved, setSaved] = useState(false);
@@ -185,15 +186,37 @@ export default function BotConfigPage() {
     if (!magicInput.trim()) return;
     setIsScraping(true);
     setScrapeResult(null);
-    const res = await scrapeWebsiteToKnowledgeBase(magicInput);
-    if (res.success) {
-      setScrapeResult(`✅ God-Mode: Extracted ${res.count} facts.`);
-      const kb = await getKnowledgeBaseDocs();
-      if (kb.success) setKbDocs(kb.documents || []);
-    } else {
-      setScrapeResult(`❌ Error: ${res.error}`);
+    
+    // 📡 Intelligent Phase Sequence (Branded ChatSela)
+    const phases = [
+      "📡 Connecting to ChatSela Intelligence Core...",
+      "🌐 Discovering business sub-pages (pricing, services, about)...",
+      "🧹 Cleaning raw data for AI synthesis...",
+      "🧠 Analyzing business facts & extracting value...",
+      "💾 Securing verified facts in the Knowledge Vault..."
+    ];
+    
+    let phaseIdx = 0;
+    setScrapingPhase(phases[0]);
+    const phaseInterval = setInterval(() => {
+      phaseIdx++;
+      if (phaseIdx < phases.length) setScrapingPhase(phases[phaseIdx]);
+    }, 5000);
+
+    try {
+      const res = await scrapeWebsiteToKnowledgeBase(magicInput);
+      if (res.success) {
+        setScrapeResult(`✅ Intelligence Loaded: Extracted ${res.count} facts.`);
+        const kb = await getKnowledgeBaseDocs();
+        if (kb.success) setKbDocs(kb.documents || []);
+      } else {
+        setScrapeResult(`❌ Error: ${res.error}`);
+      }
+    } finally {
+      clearInterval(phaseInterval);
+      setScrapingPhase(null);
+      setIsScraping(false);
     }
-    setIsScraping(false);
   };
 
   const handleGetTraining = async () => {
@@ -241,6 +264,12 @@ export default function BotConfigPage() {
                {isGenerating ? '⌛ Generating...' : '✨ Auto-Config Bot'}
             </button>
           </div>
+          {isScraping && scrapingPhase && (
+            <div style={{ marginTop: '20px', padding: '16px', borderRadius: '16px', background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', gap: '12px', animation: 'pulse 2s infinite' }}>
+              <div className="spinner-small" />
+              <p style={{ fontSize: '14px', color: '#60a5fa', fontWeight: 600 }}>{scrapingPhase}</p>
+            </div>
+          )}
           {scrapeResult && <p style={{ marginTop: '12px', fontSize: '13px', color: scrapeResult.startsWith('✅') ? '#00ff88' : '#ef4444' }}>{scrapeResult}</p>}
         </section>
 
