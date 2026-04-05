@@ -166,7 +166,7 @@ async function generateChatInsight(supabase: any, userId: string, phone: string,
   try {
     const messages = history.map(h => ({ role: h.role, content: h.content }));
     const payload = {
-      model: 'claude-3-5-sonnet-latest',
+      model: 'claude-3-haiku-20240307',
       max_tokens: 500,
       system: `Analyze chat history. Respond ONLY with a JSON object: { "summary": "...", "sentiment": "positive|neutral|negative", "intent": "inquiry|purchase|support", "valueEstimate": number, "nextStep": "..." }`,
       messages: [...messages, { role: 'user', content: 'Extract conversation insights as requested.' }]
@@ -259,7 +259,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
 
   try {
     let payload = {
-      model: 'claude-3-5-sonnet-20240620',
+      model: 'claude-3-haiku-20240307',
       max_tokens: 1024,
       system: systemPrompt,
       messages: chatMessages,
