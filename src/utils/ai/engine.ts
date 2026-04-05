@@ -231,53 +231,41 @@ export async function handleAIResponse(sender: string, message: string, botId: s
       system: systemPrompt,
       messages: chatMessages,
       tools: {
-        generate_checkout_link: {
+        generate_checkout_link: tool({
           description: 'Generates a secure payment link for a product purchase.',
-          parameters: {
-            type: 'object',
-            properties: {
-              product_name: { type: 'string', description: 'Product name' },
-              amount: { type: 'number', description: 'Product price' }
-            },
-            required: ['product_name', 'amount']
-          },
-          execute: async ({ product_name, amount }: any) => {
+          parameters: z.object({
+            product_name: z.string().describe('Product name'),
+            amount: z.number().describe('Product price')
+          }),
+          execute: async ({ product_name, amount }) => {
             console.log(`🛠️ [Tool] Generating checkout link for ${product_name} ($${amount})`);
             const link = await generateCheckoutLink(supabase, userId, amount, sender, channelId);
             return link 
               ? `SUCCESS: Generated link for ${product_name}: ${link}` 
               : `FAILURE: Could not generate link for ${product_name}. Tell the user you will process it manually.`;
           }
-        },
-        book_appointment: {
+        }),
+        book_appointment: tool({
           description: 'Provides the scheduling link for bookings and consultations.',
-          parameters: {
-            type: 'object',
-            properties: {
-              confirm: { type: 'boolean', description: 'Confirm booking' }
-            },
-            required: ['confirm']
-          },
+          parameters: z.object({
+            confirm: z.boolean().describe('Confirm booking')
+          }),
           execute: async () => {
             const calId = profile?.contact_email ? profile.contact_email.split('@')[0] : 'chatsela';
             return `Link: https://cal.com/${calId}`;
           }
-        },
-        fetch_tracking: {
+        }),
+        fetch_tracking: tool({
           description: 'Checks the shipping status of an order using a tracking ID.',
-          parameters: {
-            type: 'object',
-            properties: {
-              tracking_id: { type: 'string', description: 'Tracking ID' }
-            },
-            required: ['tracking_id']
-          },
-          execute: async ({ tracking_id }: any) => {
+          parameters: z.object({
+            tracking_id: z.string().describe('Tracking ID')
+          }),
+          execute: async ({ tracking_id }) => {
             const status = await fetchExternalTracking(supabase, userId, tracking_id);
             return status || `No tracking information found for ID ${tracking_id}.`;
           }
-        }
-      } as any,
+        })
+      },
       maxSteps: 3, 
     });
 
