@@ -101,7 +101,7 @@ async function registerWhapiWebhook(token: string) {
           {
             url: webhookUrl,
             events: [
-              "messages"
+              { type: 'messages', method: 'post' }
             ],
             mode: 'body'
           }
