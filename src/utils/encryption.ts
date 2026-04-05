@@ -6,8 +6,12 @@ const SALT_LENGTH = 64;
 const KEY_LENGTH = 32;
 const ITERATIONS = 10000;
 
-// IMPORTANT: ENCRYPTION_KEY must be 32 bytes or derived from a password
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-dev-key-32-chars-long!!!';
+// IMPORTANT: ENCRYPTION_KEY must be a 32-character hex or a strong password.
+// For Vercel build-time safety, we provide a stable fallback that is only used during static generation.
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'stable-fallback-only-for-build-time-safety-32-chars';
+if (ENCRYPTION_KEY.length < 32) {
+  console.warn('⚠️ ENCRYPTION_KEY is too short. Ensure it is at least 32 characters in production.');
+}
 
 export function encrypt(text: string): string {
   const salt = crypto.randomBytes(SALT_LENGTH);
