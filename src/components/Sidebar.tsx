@@ -11,6 +11,7 @@ export default function Sidebar({ businessName, billingTier }: { businessName?: 
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
     { name: '🤖 Bot Identity', href: '/dashboard/bot', icon: '👤' },
     { name: '🎓 Train Your Bot', href: '/dashboard/train', icon: '🧠' },
+    { name: '🔌 Connect Website', href: '/dashboard/connect', icon: '📎' },
     { name: '📁 Product Catalog', href: '/dashboard/products', icon: '📦' },
     { name: '💬 Sales & Insights', href: '/dashboard/leads', icon: '📈' },
     { name: '⚙️ System Settings', href: '/dashboard/settings', icon: '⚙️' }
