@@ -5,7 +5,8 @@ export async function resolveCustomQuote(
     origin: string;
     destination: string;
     weight_kg: number;
-    items_description?: string;
+    service_type: string;
+    dimensions: { length: number; width: number; height: number };
   }
 ): Promise<string> {
   try {
@@ -25,13 +26,11 @@ export async function resolveCustomQuote(
       
       const payload = {
         action: 'calculate_quote',
-        data: {
-          merchant_id: userId,
-          origin: params.origin,
-          destination: params.destination,
-          weight_kg: params.weight_kg,
-          items: params.items_description
-        }
+        weight: params.weight_kg,
+        origin: params.origin,
+        destination: params.destination,
+        service_type: params.service_type || 'air',
+        dimensions: params.dimensions || { length: 0, width: 0, height: 0 }
       };
 
       const headers: any = { 'Content-Type': 'application/json' };

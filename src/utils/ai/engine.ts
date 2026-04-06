@@ -296,9 +296,14 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
       origin: args.origin_city_or_country,
       destination: args.destination_city_or_country,
       weight_kg: Number(args.weight_kg),
-      items_description: args.items_description
+      service_type: args.service_type,
+      dimensions: {
+        length: Number(args.dimensions?.length || 0),
+        width: Number(args.dimensions?.width || 0),
+        height: Number(args.dimensions?.height || 0)
+      }
     });
-    await logBotActivity(supabase, userId, 'tool_call', `📦 AI requested custom quote from ${args.origin_city_or_country} to ${args.destination_city_or_country} (${args.weight_kg}kg)`, sender);
+    await logBotActivity(supabase, userId, 'tool_call', `📦 AI requested custom quote from ${args.origin_city_or_country} to ${args.destination_city_or_country} (${args.weight_kg}kg, ${args.service_type})`, sender);
   } else if (name === 'generate_checkout_link') {
     const link = await generateCheckoutLink(supabase, userId, args.amount, sender, channelId);
     if (link) {
@@ -472,7 +477,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   - Exchange Rate (1 ${profile?.base_currency || 'USD'} = ${profile?.exchange_rate || 1600.0} ${profile?.target_currency || 'NGN'})
   
   ### 🦁 THE INTERACTIVITY DIRECTIVE (MANDATORY):
-  - For ANY shipping or logistics quote, you MUST ask for: 1. Weight, 2. Dimensions, 3. Pickup City, 4. Destination City/Region. 
+  - For ANY shipping or logistics quote, you MUST interrogate for: 1. Weight, 2. Dimensions (L,W,H), 3. Service Type (Air/Ocean), 4. Pickup City, 5. Destination. 
   - Never give a final price without these. 
   - Be THRILLING but ACCURATE. 🛡️
   `.trim();
@@ -489,9 +494,19 @@ export async function handleAIResponse(sender: string, message: string, botId: s
             origin_city_or_country: { type: 'string', description: 'Pickup location (City, State, or Country)' },
             destination_city_or_country: { type: 'string', description: 'Dropoff location (City, State, or Country)' },
             weight_kg: { type: 'number', description: 'Total weight of the shipment in KG. If user gives LBS, convert to KG.' },
-            items_description: { type: 'string', description: 'What is being shipped (optional but helpful)' }
+            service_type: { type: 'string', description: 'The type of service: e.g. "air", "ocean", or "road".' },
+            dimensions: {
+              type: 'object',
+              description: 'The physical dimensions of the package in CM',
+              properties: {
+                length: { type: 'number' },
+                width: { type: 'number' },
+                height: { type: 'number' }
+              },
+              required: ['length', 'width', 'height']
+            }
           },
-          required: ['origin_city_or_country', 'destination_city_or_country', 'weight_kg']
+          required: ['origin_city_or_country', 'destination_city_or_country', 'weight_kg', 'service_type', 'dimensions']
         }
       }
     },

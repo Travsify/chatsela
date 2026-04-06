@@ -515,13 +515,11 @@ export async function testWebhookUrl(webhook_url: string, webhook_secret: string
   try {
     const payload = {
       action: 'calculate_quote',
-      data: {
-        merchant_id: 'test_user_id_123',
-        origin: 'New York, USA',
-        destination: 'London, UK',
-        weight_kg: 5.5,
-        items: 'Test Package'
-      }
+      weight: 10,
+      origin: 'Nigeria',
+      destination: 'United Kingdom',
+      service_type: 'air',
+      dimensions: { length: 50, width: 40, height: 30 }
     };
 
     const headers: any = { 'Content-Type': 'application/json' };
