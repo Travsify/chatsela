@@ -261,3 +261,37 @@ export async function verifySnippetConnection() {
 
   return { success: false, error: 'No recent connection detected. Ensure the snippet is added to your website and you have visited a page.' };
 }
+
+export async function getSyncHistory() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  // Fetch unique URLs synced by the widget
+  const { data: rawPages, error: err1 } = await supabase
+    .from('ai_knowledge_base')
+    .select('source_url, metadata')
+    .eq('user_id', user.id)
+    .eq('category', 'widget_sync')
+    .order('created_at' as any, { ascending: false })
+    .limit(50);
+
+  // Group by unique URL to show unique pages
+  const uniqueUrls = Array.from(new Set((rawPages || []).map(p => p.source_url)));
+  const pages = uniqueUrls.slice(0, 10).map(url => {
+    const entry = rawPages?.find(p => p.source_url === url);
+    return { url, synced_at: entry?.metadata?.synced_at || new Date().toISOString() };
+  });
+
+  // Fetch a sample of knowledge "facts"
+  const { data: facts, error: err2 } = await supabase
+    .from('ai_knowledge_base')
+    .select('content, category, metadata')
+    .eq('user_id', user.id)
+    .eq('category', 'widget_sync')
+    .order('created_at' as any, { ascending: false })
+    .limit(20);
+
+  if (err1 || err2) return { success: false, error: (err1 || err2)?.message };
+  return { success: true, pages, facts };
+}

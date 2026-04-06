@@ -6,7 +6,8 @@ import {
   syncStoreData,
   getWidgetSettings,
   saveWidgetSettings,
-  verifySnippetConnection
+  verifySnippetConnection,
+  getSyncHistory
 } from './actions';
 
 const PLATFORMS = [
@@ -65,6 +66,7 @@ export default function ConnectStorePage() {
   const [widgetSettings, setWidgetSettings] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [syncHistory, setSyncHistory] = useState<{ pages: any[], facts: any[] }>({ pages: [], facts: [] });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -73,6 +75,9 @@ export default function ConnectStorePage() {
     (async () => {
       const res = await getWidgetSettings();
       if (res.success) setWidgetSettings(res.settings);
+      
+      const syncRes = await getSyncHistory();
+      if (syncRes.success) setSyncHistory({ pages: syncRes.pages, facts: syncRes.facts });
     })();
   }, []);
 
@@ -103,6 +108,8 @@ export default function ConnectStorePage() {
     const res = await verifySnippetConnection();
     if (res.success) {
       setWidgetSettings({ ...widgetSettings, snippet_verified_at: res.last_seen });
+      const syncRes = await getSyncHistory();
+      if (syncRes.success) setSyncHistory({ pages: syncRes.pages, facts: syncRes.facts });
       alert('✅ Bridge Verified! Your website is now pushing data to ChatSela.');
     } else {
       alert(`❌ ${res.error}`);
@@ -254,9 +261,9 @@ export default function ConnectStorePage() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            <div style={{ padding: '24px', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ padding: '24px', background: 'rgba(37,211,102,0.05)', borderRadius: '20px', border: '1px solid rgba(37,211,102,0.2)' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                 <h4 style={{ fontSize: '15px' }}>💬 Floating WhatsApp Icon</h4>
+                 <h4 style={{ fontSize: '15px', color: '#25D366' }}>💬 Floating WhatsApp Icon</h4>
                  <div 
                    onClick={handleToggleIcon}
                    style={{ width: '44px', height: '24px', background: widgetSettings?.widget_icon_enabled ? '#25D366' : '#333', borderRadius: '12px', position: 'relative', cursor: 'pointer' }}
@@ -264,7 +271,7 @@ export default function ConnectStorePage() {
                    <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '3px', left: widgetSettings?.widget_icon_enabled ? '23px' : '3px', transition: 'all 0.2s' }} />
                  </div>
                </div>
-               <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.5' }}>Show a high-conversion floating button on your site that directly opens a chat with your bot.</p>
+               <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.5' }}>Show a high-conversion floating button on your site. Ensure <b>icon=true</b> in your script tag!</p>
             </div>
             <div style={{ padding: '24px', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
                <h4 style={{ fontSize: '15px', marginBottom: '12px' }}>🛡️ Connection Status</h4>
@@ -283,6 +290,38 @@ export default function ConnectStorePage() {
                </button>
             </div>
           </div>
+
+          {/* 🔍 Live Sync Intelligence Feed */}
+          {syncHistory.pages.length > 0 && (
+            <div style={{ marginTop: '40px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                📡 Live Intelligence Feed <span style={{ padding: '4px 8px', background: '#25D366', color: '#000', borderRadius: '6px', fontSize: '10px' }}>ACTIVE</span>
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {syncHistory.pages.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 20px', background: 'rgba(255,255,255,0.02)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '13px' }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%', color: 'rgba(255,255,255,0.8)' }}>🌐 {p.url}</div>
+                    <div style={{ color: '#25D366', fontSize: '11px', fontWeight: 700 }}>SYNCED {new Date(p.synced_at).toLocaleTimeString()}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 🧠 Bot Knowledge Snapshot */}
+          {syncHistory.facts.length > 0 && (
+            <div style={{ marginTop: '40px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '16px' }}>🧠 Bot Knowledge Snapshot</h3>
+              <div style={{ maxHeight: '250px', overflowY: 'auto', padding: '15px', background: '#000', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                {syncHistory.facts.map((f, i) => (
+                  <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '12px', color: 'rgba(255,255,255,0.5)', lineHeight: '1.6' }}>
+                    <span style={{ color: '#25D366', fontWeight: 700, marginRight: '8px' }}>[FACT]</span> {f.content}
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '12px' }}>This is a sample of what the bot has learned from your website URLs. It uses these facts to answer customer questions on WhatsApp.</p>
+            </div>
+          )}
         </section>
       )}
 
