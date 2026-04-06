@@ -223,38 +223,39 @@ export async function getWhatsAppStatus() {
   if (!user) throw new Error('Unauthorized')
 
   const token = await getUserWhapiToken(user.id);
-  if (!token) return { authenticated: false };
+  if (!token) return { authenticated: false, reason: 'No token found' };
 
   try {
-    const response = await fetch(`${WHAPI_BASE_URL}/health`, {
+    // 🔍 1. GOLDEN SIGNAL: Try login. If 409, we are ALREADY AUTHENTICATED.
+    const loginResp = await fetch(`${WHAPI_BASE_URL}/users/login`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      }
-    })
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    // Status 409 means Conflict (Already Logged In)
+    let isAuth = loginResp.status === 409;
+    let data = await loginResp.json();
 
-    const data = await response.json()
-    
-    // Log for debugging
-    try {
-      const fs = require('fs');
-      fs.appendFileSync('status_check.log', `[${new Date().toISOString()}] Token: ${token.substring(0, 10)}... | Status: ${response.status} | Body: ${JSON.stringify(data)}\n`);
-    } catch (e) {}
-    
-    // Improved detection: Whapi might return status "AUTH" in different places
-    const isAuth = 
-      data.status?.value === 'AUTH' || 
-      data.status?.text === 'AUTH' ||
-      data.authenticated === true || 
-      data.status === 'AUTH' ||
-      response.status === 409; 
-    
+    // 🔍 2. FALLBACK: Check health if login doesn't definitively tell us
+    if (!isAuth) {
+      const healthResp = await fetch(`${WHAPI_BASE_URL}/health`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const healthData = await healthResp.json();
+      isAuth = 
+        healthData.status?.value === 'AUTH' || 
+        healthData.status?.text === 'AUTH' ||
+        healthData.authenticated === true || 
+        healthData.status === 'AUTH' ||
+        healthResp.status === 409;
+    }
+
     if (isAuth) {
-      console.log(`✅ [Handshake] Authenticated Status: ${response.status}. Performing Deep Sync...`);
-      // REGISTER WEBHOOK ONCE CONNECTED
+      console.log(`✅ [Bulletproof Handshake] Connected. Performing Deep Sync...`);
       await registerWhapiWebhook(token);
 
-      // 📱 DEEP SYNC: Fetch full profile to guarantee phone number capture
+      // 📱 DEEP PROFILE SYNC: Extract phone number from profile
       let phoneNumber = null;
       try {
         const profileResp = await fetch(`${WHAPI_BASE_URL}/users/full`, {
@@ -265,28 +266,23 @@ export async function getWhatsAppStatus() {
           const profileData = await profileResp.json();
           phoneNumber = profileData.id?.split('@')[0];
         }
-      } catch (e) {
-        console.error('Deep Sync Profile Fetch Failed:', e);
-      }
-
-      const channelId = data.id || data.channel_id || (data.status?.channel_id);
+      } catch (e) {}
 
       await supabase
         .from('whatsapp_sessions')
         .update({ 
           status: 'connected', 
-          whapi_channel_id: channelId,
           phone_number: phoneNumber || null,
           updated_at: new Date().toISOString() 
         })
         .eq('user_id', user.id)
       
-      console.log(`✅ [Handshake] Synced Channel ID: ${channelId}, Final Phone: ${phoneNumber}`);
+      return { authenticated: true, phone: phoneNumber };
     }
 
-    return { authenticated: isAuth }
-  } catch (error) {
-    return { error: 'Failed to fetch status' }
+    return { authenticated: false, reason: 'Scan QR or Pairing Code on Dashboard first.' }
+  } catch (error: any) {
+    return { error: error.message || 'Failed to fetch status' }
   }
 }
 

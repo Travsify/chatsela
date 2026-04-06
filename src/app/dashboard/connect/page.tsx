@@ -110,9 +110,9 @@ export default function ConnectStorePage() {
       // Re-fetch everything to update the UI
       const settings = await getWidgetSettings();
       if (settings.success) setWidgetSettings(settings.settings);
-      alert('✅ WhatsApp Handshake Synced! Your status is now ACTIVE.');
+      alert(`✅ WhatsApp Handshake Synced! Connected: ${res.phone || 'Active'}`);
     } else {
-      alert('🟠 Status check finished. Still waiting for WhatsApp connection.');
+      alert(`🟠 Status: ${res.reason || res.error || 'Still waiting for connection.'}`);
     }
     setLoading(false);
   };
