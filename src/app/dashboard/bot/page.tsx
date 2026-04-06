@@ -170,7 +170,29 @@ export default function IntelligenceHubPage() {
             <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>Point your AI to your website, and it will learn everything about your business in real-time.</p>
             <div style={{ display: 'flex', gap: '12px' }}>
               <input type="text" value={magicInput} onChange={(e) => setMagicInput(e.target.value)} placeholder="https://yourwebsite.com" style={INPUT_STYLE} />
-              <button className="glow-btn" style={{ padding: '0 24px', background: '#3b82f6', color: '#fff' }}>MAGIC SYNC</button>
+              <button 
+                className="glow-btn" 
+                style={{ padding: '0 24px', background: isScraping ? '#333' : '#3b82f6', color: '#fff', minWidth: '160px' }}
+                disabled={isScraping || !magicInput}
+                onClick={async () => {
+                  setIsScraping(true);
+                  try {
+                    const res = await scrapeWebsiteToKnowledgeBase(magicInput);
+                    if (res.success) {
+                      alert('✅ Website synced! Your AI now knows your business.');
+                      const docsRes = await getKnowledgeBaseDocs();
+                      if (docsRes.documents) setKbDocs(docsRes.documents);
+                    } else {
+                      alert('❌ Sync failed: ' + (res.error || 'Unknown error'));
+                    }
+                  } catch (e: any) {
+                    alert('❌ Error: ' + e.message);
+                  }
+                  setIsScraping(false);
+                }}
+              >
+                {isScraping ? '⏳ SYNCING...' : '🚀 MAGIC SYNC'}
+              </button>
             </div>
           </div>
 
