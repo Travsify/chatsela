@@ -1,7 +1,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
-import { executeChatSelaIntelligence } from '@/utils/ai/engine';
+import { executeChatSelaIntelligence, executeChatSelaEmbedding } from '@/utils/ai/engine';
 import { encrypt, decrypt } from '@/utils/encryption';
 
 function parseSafeJSON(content: string) {
@@ -463,11 +463,24 @@ export async function getKnowledgeBaseDocs() {
   return { success: true, documents: data || [] };
 }
 
-export async function addKnowledgeFact(content: string, source_type: 'manual' | 'url' = 'manual', source_url?: string) {
+export async function addKnowledgeFact(content: string, source_type: 'manual' | 'url' = 'manual', source_url?: string, category?: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
-  const { data } = await supabase.from('ai_knowledge_base').insert({ user_id: user.id, content, source_type, source_url }).select().single();
+
+  // 🧠 Generate embedding for semantic RAG
+  let embedding = null;
+  try {
+    embedding = await executeChatSelaEmbedding(content);
+  } catch (e) {
+    console.warn('[KB] Embedding failed, storing without vector.');
+  }
+
+  const { data } = await supabase.from('ai_knowledge_base').insert({ 
+    user_id: user.id, content, source_type, source_url, 
+    category: category || 'general',
+    embedding 
+  }).select().single();
   return { success: true, document: data };
 }
 
@@ -485,6 +498,8 @@ export async function saveCategorizedIntelligence(categorizedFacts: Record<strin
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const inserts: any[] = [];
+  const allFacts: string[] = [];
+
   Object.entries(categorizedFacts).forEach(([category, facts]) => {
     facts.forEach(f => {
       inserts.push({
@@ -495,13 +510,91 @@ export async function saveCategorizedIntelligence(categorizedFacts: Record<strin
         source_url: sourceUrl,
         metadata: { added_at: new Date().toISOString(), depth: 'god-mode' }
       });
+      allFacts.push(f);
     });
   });
 
   if (inserts.length > 0) {
+    // 🧠 Generate embeddings for all facts in parallel (capped for safety)
+    const embeddingPromises = allFacts.slice(0, 50).map(f =>
+      executeChatSelaEmbedding(f).catch(() => null)
+    );
+    const embeddings = await Promise.all(embeddingPromises);
+    embeddings.forEach((emb, i) => { if (emb) inserts[i].embedding = emb; });
+
     const { error } = await supabase.from('ai_knowledge_base').insert(inserts);
     if (error) return { success: false, error: error.message };
   }
 
   return { success: true, count: inserts.length };
+}
+
+// ─── Self-Healing Knowledge Gaps ─────────────────────────────────────────────────
+
+export async function getKnowledgeGaps() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data, error } = await supabase
+    .from('knowledge_gaps')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) return { success: false, error: error.message };
+  return { success: true, gaps: data || [] };
+}
+
+export async function resolveKnowledgeGap(gapId: string, question: string, answer: string, customerPhone: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  // 1. Save to KB with embedding
+  const fact = `Q: ${question} A: ${answer}`;
+  let embedding = null;
+  try { embedding = await executeChatSelaEmbedding(fact); } catch(e) {}
+
+  await supabase.from('ai_knowledge_base').insert({
+    user_id: user.id,
+    content: fact,
+    category: 'faq',
+    source_type: 'gap_resolution',
+    embedding
+  });
+
+  // 2. Mark gap as resolved
+  await supabase.from('knowledge_gaps')
+    .update({ status: 'resolved', answer, resolved_at: new Date().toISOString() })
+    .eq('id', gapId)
+    .eq('user_id', user.id);
+
+  // 3. Send the answer back to the customer via WhatsApp
+  try {
+    const { data: session } = await supabase
+      .from('whatsapp_sessions')
+      .select('whapi_token')
+      .eq('user_id', user.id)
+      .single();
+
+    if (session?.whapi_token) {
+      await fetch('https://gate.whapi.cloud/messages/text', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${session.whapi_token}`, 
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ 
+          to: customerPhone, 
+          body: `💡 Great news! We now have the answer to your question:\n\n*${question}*\n\n${answer}` 
+        })
+      });
+    }
+  } catch(e) {
+    console.warn('[Gap Resolve] Could not send WhatsApp reply:', e);
+  }
+
+  return { success: true };
 }

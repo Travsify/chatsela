@@ -12,7 +12,9 @@ import {
   magicFillKnowledge,
   saveBotSettings,
   getBotSettings,
-  generateBotConfig
+  generateBotConfig,
+  getKnowledgeGaps,
+  resolveKnowledgeGap
 } from '../bot/actions';
 import VoiceTraining from '@/components/VoiceTraining';
 import PricingLedger from '../bot/PricingLedger';
@@ -58,6 +60,11 @@ export default function TrainBotPage() {
   const [isTraining, setIsTraining] = useState(false);
   const [trainingAnswers, setTrainingAnswers] = useState<Record<number, string>>({});
 
+  // Knowledge Gaps (Self-Healing Loop)
+  const [gaps, setGaps] = useState<any[]>([]);
+  const [gapAnswers, setGapAnswers] = useState<Record<string, string>>({});
+  const [resolvingGap, setResolvingGap] = useState<string | null>(null);
+
   useEffect(() => {
     (async () => {
       const bot = await getBotSettings();
@@ -70,6 +77,9 @@ export default function TrainBotPage() {
       
       const kb = await getKnowledgeBaseDocs();
       if (kb.success) setKbDocs(kb.documents || []);
+
+      const gapsRes = await getKnowledgeGaps();
+      if (gapsRes.success) setGaps(gapsRes.gaps || []);
     })();
   }, []);
 
@@ -191,7 +201,7 @@ export default function TrainBotPage() {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'services' | 'products' | 'iq'>('services');
+  const [activeTab, setActiveTab] = useState<'services' | 'products' | 'iq' | 'gaps'>('services');
 
   const handleMagicFill = async (category: string) => {
     setIsGenerating(true);
@@ -243,6 +253,18 @@ export default function TrainBotPage() {
     if (kb.success) setKbDocs(kb.documents || []);
   };
 
+  const handleResolveGap = async (gap: any) => {
+    const answer = gapAnswers[gap.id];
+    if (!answer?.trim()) return;
+    setResolvingGap(gap.id);
+    const res = await resolveKnowledgeGap(gap.id, gap.question, answer, gap.customer_phone);
+    if (res.success) {
+      setGaps(prev => prev.map(g => g.id === gap.id ? { ...g, status: 'resolved', answer } : g));
+      setGapAnswers(prev => ({ ...prev, [gap.id]: '' }));
+    }
+    setResolvingGap(null);
+  };
+
   const commonSectionStyle: React.CSSProperties = { padding: '28px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)' };
 
   return (
@@ -261,7 +283,7 @@ export default function TrainBotPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: 800 }}>🤖 Deep Training Lab</h3>
             <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '12px' }}>
-              {(['services', 'products', 'iq'] as const).map(tab => (
+              {(['services', 'products', 'iq', 'gaps'] as const).map(tab => (
                 <button 
                   key={tab} 
                   onClick={() => setActiveTab(tab)}
@@ -274,10 +296,22 @@ export default function TrainBotPage() {
                     cursor: 'pointer',
                     background: activeTab === tab ? 'var(--accent-primary)' : 'transparent',
                     color: activeTab === tab ? '#000' : 'rgba(255,255,255,0.5)',
-                    transition: 'all 0.2s'
+                    transition: 'all 0.2s',
+                    position: 'relative'
                   }}
                 >
-                  {tab.toUpperCase()}
+                  {tab === 'gaps' ? '🔔 GAPS' : tab.toUpperCase()}
+                  {tab === 'gaps' && gaps.filter(g => g.status === 'pending').length > 0 && (
+                    <span style={{
+                      position: 'absolute', top: '-4px', right: '-4px',
+                      background: '#ef4444', color: '#fff', fontSize: '9px', fontWeight: 800,
+                      borderRadius: '50%', width: '18px', height: '18px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      animation: 'pulse 2s infinite'
+                    }}>
+                      {gaps.filter(g => g.status === 'pending').length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -312,6 +346,79 @@ export default function TrainBotPage() {
                   <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.6' }}>Your bot learns from every interaction. Instructions detected via voice or magic-fill are applied directly to the core prompt.</p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'gaps' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ padding: '16px', background: 'rgba(239,68,68,0.05)', borderRadius: '16px', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.6' }}>
+                  <strong>🔔 Knowledge Gaps Inbox</strong> — These are real customer questions your bot couldn't answer.
+                  Type the correct answer below, and ChatSela will <strong>instantly reply to the customer on WhatsApp</strong> and permanently learn the answer.
+                </p>
+              </div>
+
+              {gaps.filter(g => g.status === 'pending').length === 0 && gaps.filter(g => g.status === 'resolved').length === 0 && (
+                <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.4 }}>
+                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎉</div>
+                  <p style={{ fontSize: '15px' }}>No knowledge gaps! Your bot knows everything it needs.</p>
+                </div>
+              )}
+
+              {gaps.filter(g => g.status === 'pending').map(gap => (
+                <div key={gap.id} style={{
+                  padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px',
+                  border: '1px solid rgba(239,68,68,0.2)', borderLeft: '4px solid #ef4444'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                    <div>
+                      <p style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>❓ {gap.question}</p>
+                      <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>From: {gap.customer_phone} · {new Date(gap.created_at).toLocaleString()}</p>
+                    </div>
+                    <span style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: '10px', fontWeight: 700 }}>PENDING</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <input
+                      type="text"
+                      placeholder="Type the correct answer..."
+                      value={gapAnswers[gap.id] || ''}
+                      onChange={e => setGapAnswers(prev => ({ ...prev, [gap.id]: e.target.value }))}
+                      style={{ ...INPUT_STYLE, flex: 1 }}
+                      onKeyDown={e => e.key === 'Enter' && handleResolveGap(gap)}
+                    />
+                    <button
+                      onClick={() => handleResolveGap(gap)}
+                      disabled={resolvingGap === gap.id || !gapAnswers[gap.id]?.trim()}
+                      style={{
+                        background: 'linear-gradient(135deg, #00ff88, #00d4ff)', border: 'none', color: '#000',
+                        padding: '12px 24px', borderRadius: '12px', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+                        opacity: resolvingGap === gap.id ? 0.6 : 1
+                      }}
+                    >
+                      {resolvingGap === gap.id ? '⌛ Resolving...' : '✅ Resolve & Reply'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {gaps.filter(g => g.status === 'resolved').length > 0 && (
+                <div style={{ marginTop: '20px' }}>
+                  <h5 style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: '12px' }}>✅ Resolved ({gaps.filter(g => g.status === 'resolved').length})</h5>
+                  {gaps.filter(g => g.status === 'resolved').slice(0, 10).map(gap => (
+                    <div key={gap.id} style={{
+                      padding: '14px', background: 'rgba(0,255,136,0.03)', borderRadius: '14px',
+                      border: '1px solid rgba(0,255,136,0.1)', marginBottom: '8px',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    }}>
+                      <div>
+                        <p style={{ fontSize: '13px', fontWeight: 600 }}>❓ {gap.question}</p>
+                        <p style={{ fontSize: '12px', color: '#00ff88', marginTop: '4px' }}>✅ {gap.answer}</p>
+                      </div>
+                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>{new Date(gap.resolved_at).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

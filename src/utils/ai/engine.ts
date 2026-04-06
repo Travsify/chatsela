@@ -134,6 +134,54 @@ export async function executeChatSelaIntelligence(payload: any) {
   return body;
 }
 
+export async function executeChatSelaEmbedding(text: string) {
+  if (!CHATSZELA_CORE_KEY) throw new Error('ChatSela Intelligence Key missing.');
+
+  const resp = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${CHATSZELA_CORE_KEY.trim()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text
+    })
+  });
+
+  const body = await resp.json();
+  if (!resp.ok) {
+    throw new Error(`Embedding Error: ${JSON.stringify(body)}`);
+  }
+
+  return body.data[0].embedding;
+}
+
+// ═══════════════════════════════════════════════════════
+// Semantic RAG Search (pgvector)
+// ═══════════════════════════════════════════════════════
+
+async function semanticRAGSearch(supabase: any, userId: string, query: string): Promise<string> {
+  try {
+    const queryEmbedding = await executeChatSelaEmbedding(query);
+    const { data } = await supabase.rpc('match_knowledge_base', {
+      query_embedding: queryEmbedding,
+      match_threshold: 0.5,
+      match_count: 8,
+      p_user_id: userId
+    });
+
+    if (!data || data.length === 0) return '';
+
+    return `\n### 🧠 SEMANTICALLY RETRIEVED KNOWLEDGE (Verified Relevant Facts):\n${data.map((d: any) =>
+      `[${d.category?.toUpperCase() || 'FACT'}] ${d.content}`
+    ).join('\n')}`;
+  } catch (err: any) {
+    console.error('[RAG] Semantic search failed, falling back to static KB:', err.message);
+    return '';
+  }
+}
+
 async function handleToolCall(toolCall: any, supabase: any, userId: string, sender: string, channelId: string, profile: any) {
   const { name, arguments: argsString } = toolCall.function;
   const args = JSON.parse(argsString);
@@ -173,6 +221,17 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
     } else {
       result = `FAILURE: I could not find a confirmed payment for your phone number (${sender}). Please ensure you've completed the checkout!`;
     }
+  } else if (name === 'report_knowledge_gap') {
+    // 🧠 Self-Healing: Log the question the bot couldn't answer
+    const { question } = args;
+    console.log(`⚠️ [Knowledge Gap] Bot couldn't answer: "${question}" for sender ${sender}`);
+    await supabase.from('knowledge_gaps').insert({
+      user_id: userId,
+      customer_phone: sender,
+      question: question,
+      status: 'pending'
+    });
+    result = `GAP_LOGGED: The question "${question}" has been escalated to the business owner.`;
   }
 
   return {
@@ -231,11 +290,10 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   if (!bot) return null;
   const userId = bot.user_id;
 
-  const [profileResult, productsResult, faqsResult, kbResult, servicesResult, sessionResult] = await Promise.all([
+  const [profileResult, productsResult, faqsResult, servicesResult, sessionResult] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', userId).single(),
     supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true).limit(20),
     supabase.from('faqs').select('*').eq('user_id', userId).limit(20),
-    supabase.from('ai_knowledge_base').select('*').eq('user_id', userId).limit(100),
     supabase.from('services').select('*').eq('user_id', userId).eq('is_active', true),
     supabase.from('whatsapp_sessions').select('*').eq('user_id', userId).single()
   ]);
@@ -254,11 +312,14 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   }));
   chatMessages.push({ role: 'user', content: message });
 
+  // 🧠 God-Mode: Semantic RAG search — pulls the most relevant facts for THIS specific message
+  const semanticContext = await semanticRAGSearch(supabase, userId, message);
+
   const systemPrompt = buildSystemPrompt(
     profile?.business_name || 'Business', 
     productsResult.data || [], 
     faqsResult.data || [], 
-    kbResult.data || []
+    [] // KB now served via Semantic RAG above, not static injection
   );
 
   // 💎 Structured Service Ledger Injection
@@ -332,13 +393,27 @@ export async function handleAIResponse(sender: string, message: string, botId: s
           required: ['tracking_id']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'report_knowledge_gap',
+        description: 'Use this ONLY when you genuinely do not have the answer or specific data (price, service detail, policy) to answer truthfully. Do NOT guess. Escalate to the owner.',
+        parameters: {
+          type: 'object',
+          properties: {
+            question: { type: 'string', description: 'The exact customer question you cannot answer from available data' }
+          },
+          required: ['question']
+        }
+      }
     }
   ];
 
   try {
     let payload: any = {
       model: 'gpt-4o-mini',
-      messages: [{ role: 'system', content: systemPrompt + serviceLedgerSnippet + "\n" + currencyContext }, ...chatMessages],
+      messages: [{ role: 'system', content: systemPrompt + semanticContext + serviceLedgerSnippet + "\n" + currencyContext }, ...chatMessages],
       tools: tools,
       tool_choice: 'auto'
     };
