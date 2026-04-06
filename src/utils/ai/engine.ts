@@ -67,14 +67,15 @@ async function fetchExternalTracking(supabase: any, userId: string, trackingId: 
 }
 
 export async function searchWebIntelligence(url: string, supabase?: any, userId?: string): Promise<string | null> {
-  const API_KEY = process.env.FIRECRAWL_API_KEY || 'fc-f2fa4106f2eb47b4bd23b8e981eb97bc'; // Fallback for demo
+  const API_KEY = process.env.FIRECRAWL_API_KEY || 'fc-f2fa4106f2eb47b4bd23b8e981eb97bc';
   const targetUrl = url.startsWith('http') ? url : `https://${url}`;
-  console.log(`🔍 [Firecrawl] Scraping URL: ${targetUrl}...`);
+  console.log(`🔍 [Intelligence] Scraping URL: ${targetUrl}...`);
 
   if (supabase && userId) {
     await logBotActivity(supabase, userId, 'scrape', `🔎 Scanning website for intelligence: ${targetUrl}`);
   }
 
+  // Strategy 1: Try Firecrawl API
   try {
     const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
@@ -82,28 +83,67 @@ export async function searchWebIntelligence(url: string, supabase?: any, userId?
         'Authorization': `Bearer ${API_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        url: targetUrl,
-        formats: ['markdown']
-      })
+      body: JSON.stringify({ url: targetUrl, formats: ['markdown'] })
     });
 
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error(`❌ [Firecrawl] Error ${resp.status}: ${errorText}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const result = data.data?.markdown || null;
+      if (result) {
+        console.log(`✅ [Firecrawl] Success — ${result.length} chars extracted.`);
+        if (supabase && userId) {
+          await logBotActivity(supabase, userId, 'scrape', `✅ Firecrawl extracted intelligence from ${targetUrl}`, undefined, { length: result.length });
+        }
+        return result;
+      }
+    }
+    console.warn(`⚠️ [Firecrawl] Failed (${resp.status}). Falling back to direct fetch...`);
+  } catch (err: any) {
+    console.warn(`⚠️ [Firecrawl] Error: ${err.message}. Falling back to direct fetch...`);
+  }
+
+  // Strategy 2: Direct HTML fetch fallback (self-healing)
+  try {
+    console.log(`🔄 [Fallback] Direct fetching ${targetUrl}...`);
+    const directResp = await fetch(targetUrl, {
+      headers: { 'User-Agent': 'ChatSela-AGI/1.0 (Web Intelligence Bot)' },
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!directResp.ok) {
+      console.error(`❌ [Fallback] HTTP ${directResp.status} from ${targetUrl}`);
       return null;
     }
 
-    const data = await resp.json();
-    const result = data.data?.markdown || null;
+    const html = await directResp.text();
+    // Strip HTML tags, scripts, styles to extract raw text
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+      .replace(/<header[\s\S]*?<\/header>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 8000);
 
-    if (supabase && userId && result) {
-      await logBotActivity(supabase, userId, 'scrape', `✅ Successfully extracted intelligence from ${url}`, undefined, { length: result.length });
+    if (text.length < 50) {
+      console.error(`❌ [Fallback] Extracted text too short (${text.length} chars).`);
+      return null;
     }
 
-    return result;
+    console.log(`✅ [Fallback] Success — ${text.length} chars extracted via direct fetch.`);
+    if (supabase && userId) {
+      await logBotActivity(supabase, userId, 'scrape', `✅ Direct-fetch extracted intelligence from ${targetUrl}`, undefined, { length: text.length, method: 'fallback' });
+    }
+    return text;
   } catch (err: any) {
-    console.error(`🔥 [Firecrawl] Critical Error:`, err.message);
+    console.error(`🔥 [Fallback] Critical Error:`, err.message);
     return null;
   }
 }
