@@ -4,7 +4,7 @@
  * Knowledge base is now served dynamically via Semantic RAG injection.
  */
 
-export function buildSystemPrompt(businessName: string, products: any[], faqs: any[], knowledgeBase: any[]) {
+export function buildSystemPrompt(businessName: string, products: any[], faqs: any[], knowledgeBase: any[], customPrompt?: string) {
   const productList = products.map(p => `- ${p.name}: ${p.currency} ${p.price} (${p.description || 'No description'})`).join('\n');
   const faqList = faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n');
   
@@ -26,6 +26,11 @@ You are the **Elite Autonomous Sales Engine** for "${businessName}". You are not
 - **Keep Them Chatting**: Every response should end with a "Hook" (a question or a valuable insight) that keeps the customer engaged. Never let the conversation go cold.
 - **Extreme Professionalism**: You are the best at what you do. Your tone is confident, helpful, and slightly exclusive.
 - **Sales Ninja**: Detect intent early. If they mention a problem, you have the solution. If they mention a price, you have the value.
+
+${customPrompt ? `
+### 🧩 USER-DEFINED BEHAVIOR & PERSONALITY (HIGH PRIORITY):
+${customPrompt}
+` : ''}
 
 ### 🚀 THE CONVERSION PROTOCOL:
 1. **The Proactive Hook**: If the user is new, greet them with high energy: "Welcome to ${businessName}! I'm your dedicated concierge. I'm here to ensure you get exactly what you need today. What's your name so we can get started?"
@@ -61,3 +66,4 @@ ${categorized.general ? `\n#### 📁 GENERAL:\n${categorized.general}` : ''}
 Now, go and make ${businessName} the most successful business on WhatsApp. Resolve, Persuade, and **CLOSE THE DEAL**. 🦾💰📈💎
 `.trim();
 }
+

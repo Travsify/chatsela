@@ -97,6 +97,17 @@ export default function TrainBotPage() {
     setIsGenerating(false);
   };
 
+  const handleSaveSettings = async () => {
+    setIsAddingFact(true); // Using this as a generic loading state for simplicity
+    const res = await saveBotSettings(botName, prompt, welcomeMessage, menuOptions);
+    if (res.success) {
+      alert('✅ Bot Settings Saved Successfully!');
+    } else {
+      alert('❌ Failed to save settings.');
+    }
+    setIsAddingFact(false);
+  };
+
   const handleAddFact = async () => {
     if (!newFact.trim()) return;
     setIsAddingFact(true);
@@ -280,6 +291,49 @@ export default function TrainBotPage() {
 
         {/* ── 🧠 Intelligence Command Center ── */}
         <section style={{ ...commonSectionStyle, borderLeft: '4px solid var(--accent-primary)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '32px', padding: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', gap: '20px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: '8px', textTransform: 'uppercase' }}>Bot Name / Identity</label>
+                <input 
+                  type="text" 
+                  value={botName} 
+                  onChange={(e) => setBotName(e.target.value)} 
+                  placeholder="e.g. ChatSela Sales Engine" 
+                  style={INPUT_STYLE} 
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: '8px', textTransform: 'uppercase' }}>Welcome Message (Optional)</label>
+                <input 
+                  type="text" 
+                  value={welcomeMessage} 
+                  onChange={(e) => setWelcomeMessage(e.target.value)} 
+                  placeholder="e.g. Hi! How can I help you today?" 
+                  style={INPUT_STYLE} 
+                />
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginBottom: '8px', textTransform: 'uppercase' }}>Core Personality & Instructions (Custom Prompt)</label>
+              <textarea 
+                rows={4}
+                value={prompt} 
+                onChange={(e) => setPrompt(e.target.value)} 
+                placeholder="Explain the bot's tone and specific rules (e.g. 'Speak in a luxury tone. Always mention our 24/7 delivery.')" 
+                style={{ ...INPUT_STYLE, height: 'auto', resize: 'vertical' }} 
+              />
+            </div>
+            <button 
+              onClick={handleSaveSettings} 
+              disabled={isAddingFact}
+              className="glow-btn" 
+              style={{ alignSelf: 'flex-start', padding: '10px 24px', fontSize: '13px' }}
+            >
+              {isAddingFact ? '⌛ Saving...' : 'Save Bot Identity ✅'}
+            </button>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: 800 }}>🤖 Deep Training Lab</h3>
             <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '12px' }}>

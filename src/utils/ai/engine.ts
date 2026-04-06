@@ -315,11 +315,15 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   // 🧠 God-Mode: Semantic RAG search — pulls the most relevant facts for THIS specific message
   const semanticContext = await semanticRAGSearch(supabase, userId, message);
 
+  const botName = bot.name || profile?.business_name || 'Business';
+  const customPrompt = bot.prompt || '';
+
   const systemPrompt = buildSystemPrompt(
-    profile?.business_name || 'Business', 
+    botName, 
     productsResult.data || [], 
     faqsResult.data || [], 
-    [] // KB now served via Semantic RAG above, not static injection
+    [], // KB now served via Semantic RAG above, not static injection
+    customPrompt
   );
 
   // 💎 Structured Service Ledger Injection
