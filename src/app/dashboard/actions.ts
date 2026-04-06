@@ -250,17 +250,26 @@ export async function getWhatsAppStatus() {
       response.status === 409; 
     
     if (isAuth) {
-      console.log(`✅ [Handshake] Authenticated Status: ${response.status}. Syncing Channel ID...`);
+      console.log(`✅ [Handshake] Authenticated Status: ${response.status}. Performing Deep Sync...`);
       // REGISTER WEBHOOK ONCE CONNECTED
       await registerWhapiWebhook(token);
 
-      const channelId = data.id || data.channel_id || (data.status?.channel_id);
-      
-      // ✅ 📱 EXTRACT PHONE NUMBER FROM ID (e.g. 123456789@s.whatsapp.net)
-      let phoneNumber = data.id || data.status?.channel_id || (data.status?.value === 'AUTH' ? data.id : null);
-      if (phoneNumber?.includes('@')) {
-        phoneNumber = phoneNumber.split('@')[0];
+      // 📱 DEEP SYNC: Fetch full profile to guarantee phone number capture
+      let phoneNumber = null;
+      try {
+        const profileResp = await fetch(`${WHAPI_BASE_URL}/users/full`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (profileResp.ok) {
+          const profileData = await profileResp.json();
+          phoneNumber = profileData.id?.split('@')[0];
+        }
+      } catch (e) {
+        console.error('Deep Sync Profile Fetch Failed:', e);
       }
+
+      const channelId = data.id || data.channel_id || (data.status?.channel_id);
 
       await supabase
         .from('whatsapp_sessions')
@@ -272,7 +281,7 @@ export async function getWhatsAppStatus() {
         })
         .eq('user_id', user.id)
       
-      console.log(`✅ [Handshake] Synced Channel ID: ${channelId}, Phone: ${phoneNumber}`);
+      console.log(`✅ [Handshake] Synced Channel ID: ${channelId}, Final Phone: ${phoneNumber}`);
     }
 
     return { authenticated: isAuth }
