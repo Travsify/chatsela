@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getQuoteSettings, saveQuoteSettings, getShippingRates, addShippingRate, deleteShippingRate } from '../bot/actions';
+import { getQuoteSettings, saveQuoteSettings, getShippingRates, addShippingRate, deleteShippingRate, testWebhookUrl } from '../bot/actions';
 
 const INPUT_STYLE: React.CSSProperties = {
   padding: '12px 16px',
@@ -39,6 +39,9 @@ export default function LogisticsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -70,6 +73,19 @@ export default function LogisticsPage() {
       setTimeout(() => setSaved(false), 3000);
     }
     setIsSaving(false);
+  };
+
+  const handleTestWebhook = async () => {
+    if (!webhookUrl) return;
+    setTestLoading(true);
+    setTestResult(null);
+    const res = await testWebhookUrl(webhookUrl, webhookSecret);
+    if (res.success) {
+      setTestResult({ success: true, message: `Success! Response: ${JSON.stringify(res.response)}` });
+    } else {
+      setTestResult({ success: false, message: `Failed: ${res.error}` });
+    }
+    setTestLoading(false);
   };
 
   const handleAddRate = async () => {
@@ -145,6 +161,33 @@ export default function LogisticsPage() {
             <div>
               <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>Webhook Secret (Optional)</label>
               <input style={INPUT_STYLE} type="password" value={webhookSecret} onChange={e => setWebhookSecret(e.target.value)} placeholder="Secret for x-chatsela-signature header" />
+            </div>
+            
+            <div style={{ marginTop: '10px' }}>
+              <button 
+                onClick={handleTestWebhook}
+                disabled={!webhookUrl || testLoading}
+                style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)', cursor: webhookUrl ? 'pointer' : 'not-allowed', fontSize: '13px', fontWeight: 600 }}
+              >
+                {testLoading ? 'Testing...' : 'Test Webhook Connection'}
+              </button>
+              
+              {testResult && (
+                <div style={{ 
+                  marginTop: '12px', 
+                  padding: '12px', 
+                  borderRadius: '8px', 
+                  backgroundColor: testResult.success ? 'rgba(0,255,136,0.05)' : 'rgba(255,68,68,0.05)',
+                  border: `1px solid ${testResult.success ? 'rgba(0,255,136,0.2)' : 'rgba(255,68,68,0.2)'}`,
+                  color: testResult.success ? '#00ff88' : '#ff4444',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all'
+                }}>
+                  {testResult.message}
+                </div>
+              )}
             </div>
           </div>
         )}

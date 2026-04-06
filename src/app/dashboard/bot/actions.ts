@@ -511,6 +511,43 @@ export async function saveQuoteSettings(settings: { quote_mode: string; webhook_
   return { success: true };
 }
 
+export async function testWebhookUrl(webhook_url: string, webhook_secret: string) {
+  try {
+    const payload = {
+      event: 'calculate_quote',
+      data: {
+        merchant_id: 'test_user_id_123',
+        origin: 'New York, USA',
+        destination: 'London, UK',
+        weight_kg: 5.5,
+        items: 'Test Package'
+      }
+    };
+
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (webhook_secret) {
+      headers['x-chatsela-signature'] = webhook_secret;
+    }
+
+    const resp = await fetch(webhook_url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      return { success: false, error: `HTTP ${resp.status}: ${text.substring(0, 100)}` };
+    }
+
+    const result = await resp.json();
+    return { success: true, response: result };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function getShippingRates() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
