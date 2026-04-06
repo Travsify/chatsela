@@ -16,17 +16,10 @@ export default async function Dashboard() {
   // Dashboard Intelligence (Real Data)
   const stats = await getDashboardStats().catch(() => ({ totalValue: 0, hotLeads: 0, kbCount: 0, totalInsights: 0 }));
 
-  // Fetch Onboarding Status
-  const { data: session } = await supabase.from('whatsapp_sessions').select('status').eq('user_id', user.id).single();
+  // Fetch Dashboard Statuses
+  const { data: session } = await supabase.from('whatsapp_sessions').select('status, phone_number').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
   const isConnected = session?.status === 'connected';
-
-  // Fetch Recent Insights (For Preview)
-  const { data: recentInsights } = await supabase
-    .from('chat_insights')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('last_interaction_at', { ascending: false })
-    .limit(3);
+  const isSnippetVerified = !!profile?.snippet_verified_at;
 
   const businessName = profile?.business_name || user.email?.split('@')[0];
 
@@ -40,29 +33,39 @@ export default async function Dashboard() {
             Hello, {businessName} 👋
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+             {/* 🟢 WhatsApp Status */}
              <div style={{ 
                display: 'flex', 
                alignItems: 'center', 
                gap: '8px', 
                padding: '6px 14px', 
                borderRadius: '20px', 
-               background: isConnected ? 'rgba(0, 255, 136, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-               border: `1px solid ${isConnected ? 'rgba(0, 255, 136, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
+               background: isConnected ? 'rgba(37, 211, 102, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+               border: `1px solid ${isConnected ? 'rgba(37, 211, 102, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
                fontSize: '12px',
-               fontWeight: '600',
-               color: isConnected ? '#00ff88' : 'var(--text-muted)'
+               fontWeight: '700',
+               color: isConnected ? '#25d366' : 'var(--text-muted)'
              }}>
-               <div style={{ 
-                 width: '8px', 
-                 height: '8px', 
-                 borderRadius: '50%', 
-                 background: isConnected ? '#00ff88' : 'gray',
-                 boxShadow: isConnected ? '0 0 10px #00ff88' : 'none',
-                 animation: isConnected ? 'pulse 2s infinite' : 'none'
-               }} />
-               {isConnected ? 'AI Sales Agent: ACTIVE' : 'AI Offline (Connect WhatsApp)'}
+               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isConnected ? '#25d366' : 'gray', boxShadow: isConnected ? '0 0 10px #25d366' : 'none' }} />
+               {isConnected ? 'WhatsApp: CONNECTED' : 'WhatsApp: OFFLINE'}
              </div>
-              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>ChatSela Sales Engine analyzing 24/7</span>
+
+             {/* 🌐 Website Status */}
+             <div style={{ 
+               display: 'flex', 
+               alignItems: 'center', 
+               gap: '8px', 
+               padding: '6px 14px', 
+               borderRadius: '20px', 
+               background: isSnippetVerified ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+               border: `1px solid ${isSnippetVerified ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
+               fontSize: '12px',
+               fontWeight: '700',
+               color: isSnippetVerified ? '#3b82f6' : 'var(--text-muted)'
+             }}>
+               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSnippetVerified ? '#3b82f6' : 'gray', boxShadow: isSnippetVerified ? '0 0 10px #3b82f6' : 'none' }} />
+               {isSnippetVerified ? 'Website Sync: ACTIVE' : 'Website: NOT CONNECTED'}
+             </div>
           </div>
         </div>
         
@@ -146,16 +149,49 @@ export default async function Dashboard() {
           <div className="glass" style={{ marginTop: 'auto', padding: '20px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(0, 168, 132, 0.05), transparent)', border: '1px solid rgba(0, 168, 132, 0.1)' }}>
              <p style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>🚀 Tip: Feed the AI</p>
              <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-               Add your website or specific business facts to the **Knowledge Vault** to make the Sales Engine even more accurate.
+                Add your website or specific business facts to the **Knowledge Vault** to make the Sales Engine even more accurate.
              </p>
              <Link href="/dashboard/bot" style={{ display: 'inline-block', marginTop: '12px', fontSize: '12px', fontWeight: '700', color: '#00a884', textDecoration: 'none' }}>
-               Manage Knowledge →
+                Manage Knowledge →
              </Link>
           </div>
         </section>
 
         {/* ── Right: AI Pulse & Quick Tools ──────────────────────────────────── */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+          
+          {!isSnippetVerified && (
+            <div className="glass" style={{ padding: '24px', borderRadius: '24px', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent)', border: '1px dashed rgba(59, 130, 246, 0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '18px' }}>🌐</span>
+                <span style={{ background: 'rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '8px', fontSize: '10px' }}>SETUP NEEDED</span>
+              </div>
+              <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '8px' }}>Connect Your Website</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
+                Your AI bot needs to "read" your website to answer customer questions accurately.
+              </p>
+              <Link href="/dashboard/connect" style={{ display: 'block', width: '100%', textAlign: 'center', background: '#3b82f6', color: '#fff', padding: '10px', borderRadius: '12px', fontSize: '13px', fontWeight: '700', textDecoration: 'none' }}>
+                Install Snippet →
+              </Link>
+            </div>
+          )}
+
+          {isSnippetVerified && (
+            <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '18px' }}>📡</span>
+                <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '4px 8px', borderRadius: '8px', fontSize: '10px', fontWeight: '800' }}>VERIFIED</span>
+              </div>
+              <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '8px' }}>Website Intelligence</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
+                Your bot is currently scraping and learning from your web pages in real-time.
+              </p>
+              <Link href="/dashboard/connect" style={{ display: 'block', width: '100%', textAlign: 'center', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '10px', borderRadius: '12px', fontSize: '13px', fontWeight: '700', textDecoration: 'none', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                View Live Sync Feed →
+              </Link>
+            </div>
+          )}
+
           {!isConnected && <WhatsAppConnector />}
           
           <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
