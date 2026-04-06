@@ -92,7 +92,16 @@ export async function POST(req: NextRequest) {
         from_me: false
       });
 
-      // 4. Check Handoff Status
+      // 4. Fetch Profile & Check Autonomous Mode
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('is_autonomous')
+        .eq('id', userId)
+        .single();
+
+      const isAutonomous = profile?.is_autonomous || false;
+
+      // 5. Check Handoff Status
       const { data: handoff } = await supabaseAdmin
         .from('handoff_status')
         .select('bot_enabled')
@@ -100,11 +109,12 @@ export async function POST(req: NextRequest) {
         .eq('contact_phone', sender)
         .single();
 
-      const botEnabled = handoff ? handoff.bot_enabled : true;
+      // Bot is enabled if explicitly bot_enabled is true, OR if we are in Strict Autonomous Mode
+      const botEnabled = isAutonomous ? true : (handoff ? handoff.bot_enabled : true);
 
       if (botEnabled) {
-        // 5. Trigger AI Logic (Using the user's specific token)
-        console.log(`🧠 [Whapi Webhook] Calling AI Response Handler...`);
+        // 6. Trigger AI Logic (Using the user's specific token)
+        console.log(`🧠 [Whapi Webhook] Calling AI Response Handler (Autonomous: ${isAutonomous})...`);
         const aiResponse = await handleAIResponse(sender, text, bot.id);
         
         // 6. Log Bot's outgoing message

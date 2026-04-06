@@ -383,7 +383,7 @@ export async function getMerchantIntegrations() {
 
   const { data } = await supabase
     .from('profiles')
-    .select('booking_url, stripe_secret_enc, paystack_secret_enc, base_currency, target_currency, exchange_rate, manual_rate_active')
+    .select('booking_url, stripe_secret_enc, paystack_secret_enc, base_currency, target_currency, exchange_rate, manual_rate_active, is_autonomous, autonomous_instruction, website_url')
     .eq('id', user.id)
     .single();
 
@@ -396,7 +396,10 @@ export async function getMerchantIntegrations() {
       base_currency: data?.base_currency || 'USD',
       target_currency: data?.target_currency || 'NGN',
       exchange_rate: data?.exchange_rate || 1600.0,
-      manual_rate_active: data?.manual_rate_active ?? true
+      manual_rate_active: data?.manual_rate_active ?? true,
+      is_autonomous: data?.is_autonomous || false,
+      autonomous_instruction: data?.autonomous_instruction || '',
+      website_url: data?.website_url || ''
     } 
   };
 }
@@ -409,6 +412,9 @@ export async function saveMerchantIntegrations(settings: {
   target_currency?: string;
   exchange_rate?: number;
   manual_rate_active?: boolean;
+  is_autonomous?: boolean;
+  autonomous_instruction?: string;
+  website_url?: string;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -423,6 +429,10 @@ export async function saveMerchantIntegrations(settings: {
   if (settings.target_currency !== undefined) update.target_currency = settings.target_currency;
   if (settings.exchange_rate !== undefined) update.exchange_rate = settings.exchange_rate;
   if (settings.manual_rate_active !== undefined) update.manual_rate_active = settings.manual_rate_active;
+  
+  if (settings.is_autonomous !== undefined) update.is_autonomous = settings.is_autonomous;
+  if (settings.autonomous_instruction !== undefined) update.autonomous_instruction = settings.autonomous_instruction;
+  if (settings.website_url !== undefined) update.website_url = settings.website_url;
 
   const { error } = await supabase.from('profiles').update(update).eq('id', user.id);
   if (error) return { success: false, error: error.message };

@@ -13,17 +13,47 @@
 
   // 📂 1. God-Mode Sync Logic
   async function syncIntelligence() {
+    function extractSiteData() {
+        const data = {
+            url: window.location.href,
+            title: document.title,
+            text: document.body.innerText.substring(0, 3000), // Better limit
+            attributes: {}
+        };
+
+        // 🛍️ 1. Extract JSON-LD (Standard E-commerce)
+        try {
+            const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+            ldScripts.forEach(script => {
+                const json = JSON.parse(script.innerText);
+                const product = json['@type'] === 'Product' ? json : (json['@graph']?.find(i => i['@type'] === 'Product'));
+                if (product) {
+                    const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
+                    if (offer) {
+                        data.attributes.price = offer.price || offer.lowPrice;
+                        data.attributes.currency = offer.priceCurrency;
+                        data.attributes.stock = offer.availability?.includes('InStock') ? 'in_stock' : 'out_of_stock';
+                    }
+                }
+            });
+        } catch (e) {}
+
+        // 🏷️ 2. Fallback: OpenGraph & Meta Tags
+        if (!data.attributes.price) {
+            data.attributes.price = document.querySelector('meta[property="og:price:amount"]')?.content || 
+                                   document.querySelector('meta[property="product:price:amount"]')?.content;
+            data.attributes.currency = document.querySelector('meta[property="og:price:currency"]')?.content || 
+                                     document.querySelector('meta[property="product:price:currency"]')?.content;
+        }
+
+        return data;
+    }
+
     const data = {
       apiKey: apiKey,
-      url: window.location.href,
-      title: document.title,
-      description: document.querySelector('meta[name="description"]')?.content || '',
-      jsonLd: []
+      ...extractSiteData()
     };
 
-    // Extract Product/Service schema
-    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-    scripts.forEach(s => {
       try {
         const json = JSON.parse(s.innerText);
         data.jsonLd.push(json);

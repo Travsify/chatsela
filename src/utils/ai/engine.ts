@@ -20,7 +20,7 @@ async function fetchExternalTracking(supabase: any, userId: string, trackingId: 
 
   try {
     if (connector.platform === 'shopify') {
-      const url = `https://${connector.store_url.replace(/^https?:\/\//, '')}/admin/api/2024-01/orders.json?name=${trackingId.replace('#','')}&status=any`;
+      const url = `https://${connector.store_url.replace(/^https?:\/\//, '')}/admin/api/2024-01/orders.json?name=${trackingId.replace('#', '')}&status=any`;
       const resp = await fetch(url, { headers: { 'X-Shopify-Access-Token': connector.access_token } });
       if (resp.ok) {
         const { orders } = await resp.json();
@@ -46,6 +46,36 @@ async function fetchExternalTracking(supabase: any, userId: string, trackingId: 
     console.error('[External Tracking] Failed:', e);
   }
   return null;
+}
+
+async function searchWebIntelligence(url: string): Promise<string | null> {
+  const API_KEY = process.env.FIRECRAWL_API_KEY || 'fc-f2fa4106f2eb47b4bd23b8e981eb97bc'; // Fallback for demo
+  console.log(`🔍 [Firecrawl] Scraping URL: ${url}...`);
+
+  try {
+    const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url: url,
+        formats: ['markdown']
+      })
+    });
+
+    if (!resp.ok) {
+      console.error(`❌ [Firecrawl] Error ${resp.status}: ${await resp.text()}`);
+      return null;
+    }
+
+    const data = await resp.json();
+    return data.data?.markdown || null;
+  } catch (err: any) {
+    console.error(`🔥 [Firecrawl] Critical Error:`, err.message);
+    return null;
+  }
 }
 
 async function generateCheckoutLink(supabase: any, userId: string, amount: number, customerPhone: string, channelId: string): Promise<string | null> {
@@ -232,6 +262,22 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
       status: 'pending'
     });
     result = `GAP_LOGGED: The question "${question}" has been escalated to the business owner.`;
+  } else if (name === 'search_web_intelligence') {
+    const { url } = args;
+    const content = await searchWebIntelligence(url);
+    if (content) {
+      // 🧠 Self-Healing: Store the new info back into the knowledge base (background)
+      supabase.from('ai_knowledge_base').insert({
+        user_id: userId,
+        content: content.substring(0, 5000), // Markdown snippet
+        category: 'web_scrape',
+        source: url
+      }).then(() => console.log(`✅ [Self-Healing] Updated KB with content from ${url}`));
+
+      result = `SUCCESS: Found information on the web: ${content.substring(0, 500)}...`;
+    } else {
+      result = `FAILURE: Could not extract information from ${url}.`;
+    }
   }
 
   return {
@@ -323,7 +369,10 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     productsResult.data || [], 
     faqsResult.data || [], 
     [], // KB now served via Semantic RAG above, not static injection
-    customPrompt
+    customPrompt,
+    profile?.is_autonomous,
+    profile?.autonomous_instruction,
+    profile?.website_url
   );
 
   // 💎 Structured Service Ledger Injection
@@ -410,6 +459,20 @@ export async function handleAIResponse(sender: string, message: string, botId: s
             question: { type: 'string', description: 'The exact customer question you cannot answer from available data' }
           },
           required: ['question']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'search_web_intelligence',
+        description: 'Searches the business website or a specific URL for product/service information. Use this if the knowledge base does not contain the answer.',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'The absolute URL to scrape (e.g. from the website_url in system context)' }
+          },
+          required: ['url']
         }
       }
     }
