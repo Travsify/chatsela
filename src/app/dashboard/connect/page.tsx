@@ -225,6 +225,13 @@ export default function ConnectStorePage() {
             </div>
           )}
 
+          {widgetSettings?.whatsapp_status === 'connected' && !widgetSettings?.whatsapp_phone && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(255,165,0,0.1)', border: '1px solid rgba(255,165,0,0.2)', borderRadius: '20px', marginBottom: '24px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ffa500' }} />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#ffa500' }}>⏳ Connection Active (Phone Handshake Pending)</span>
+            </div>
+          )}
+
           <div style={{ background: 'rgba(255,255,255,0.02)', padding: '24px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span style={{ fontSize: '12px', fontWeight: 700, color: '#25D366' }}>WIDGET CODE (v2)</span>
@@ -240,11 +247,11 @@ export default function ConnectStorePage() {
             </div>
           </div>
 
-          {!widgetSettings?.whatsapp_phone && !manualPhone && (
+          {widgetSettings?.whatsapp_status !== 'connected' && !manualPhone && (
             <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '18px' }}>⚠️</span>
               <p style={{ fontSize: '13px', color: '#ff6b6b' }}>
-                <b>No WhatsApp connected.</b> Please enter your number below or <a href="/dashboard/settings" style={{ color: '#fff', textDecoration: 'underline' }}>connect your bot</a>.
+                <b>No WhatsApp connected.</b> Please enter your number below or <a href="/dashboard" style={{ color: '#fff', textDecoration: 'underline' }}>link your device</a>.
               </p>
             </div>
           )}

@@ -255,17 +255,24 @@ export async function getWhatsAppStatus() {
       await registerWhapiWebhook(token);
 
       const channelId = data.id || data.channel_id || (data.status?.channel_id);
+      
+      // ✅ 📱 EXTRACT PHONE NUMBER FROM ID (e.g. 123456789@s.whatsapp.net)
+      let phoneNumber = data.id || data.status?.channel_id || (data.status?.value === 'AUTH' ? data.id : null);
+      if (phoneNumber?.includes('@')) {
+        phoneNumber = phoneNumber.split('@')[0];
+      }
 
       await supabase
         .from('whatsapp_sessions')
         .update({ 
           status: 'connected', 
           whapi_channel_id: channelId,
+          phone_number: phoneNumber || null,
           updated_at: new Date().toISOString() 
         })
         .eq('user_id', user.id)
       
-      console.log(`✅ [Handshake] Synced Channel ID: ${channelId}`);
+      console.log(`✅ [Handshake] Synced Channel ID: ${channelId}, Phone: ${phoneNumber}`);
     }
 
     return { authenticated: isAuth }
@@ -360,7 +367,11 @@ export async function getWhatsAppPairingCode(phone: string) {
       fs.appendFileSync('pairing.log', `[${new Date().toISOString()}] Phone: ${cleanPhone} | Status: ${response.status} | Body: ${JSON.stringify(data)}\n`);
     } catch (e) {}
 
-    if (data.code) return { code: data.code };
+    if (data.code) {
+      // ✅ SAVE PHONE NUMBER TO DB IMMEDIATELY
+      await supabase.from('whatsapp_sessions').update({ phone_number: cleanPhone }).eq('user_id', user.id);
+      return { code: data.code };
+    }
     if (data.error?.code === 409 || response.status === 409) {
       await registerWhapiWebhook(token);
       return { authenticated: true };

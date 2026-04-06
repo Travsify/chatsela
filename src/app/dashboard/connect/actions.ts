@@ -202,7 +202,7 @@ export async function getWidgetSettings() {
 
   const { data: whatsapp } = await supabase
     .from('whatsapp_sessions')
-    .select('phone_number')
+    .select('phone_number, status')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -211,7 +211,8 @@ export async function getWidgetSettings() {
     success: true, 
     settings: { 
       ...data, 
-      whatsapp_phone: whatsapp?.phone_number || null 
+      whatsapp_phone: whatsapp?.phone_number || null,
+      whatsapp_status: whatsapp?.status || 'disconnected'
     } 
   };
 }
