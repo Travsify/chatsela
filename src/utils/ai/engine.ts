@@ -261,6 +261,8 @@ export async function executeChatSelaEmbedding(text: string) {
 // Semantic RAG Search (pgvector)
 // ═══════════════════════════════════════════════════════
 
+import { resolveCustomQuote } from './quoting';
+
 async function semanticRAGSearch(supabase: any, userId: string, query: string): Promise<string> {
   try {
     const queryEmbedding = await executeChatSelaEmbedding(query);
@@ -289,7 +291,15 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
 
   let result = '';
 
-  if (name === 'generate_checkout_link') {
+  if (name === 'calculate_custom_quote') {
+    result = await resolveCustomQuote(supabase, userId, {
+      origin: args.origin_city_or_country,
+      destination: args.destination_city_or_country,
+      weight_kg: Number(args.weight_kg),
+      items_description: args.items_description
+    });
+    await logBotActivity(supabase, userId, 'tool_call', `📦 AI requested custom quote from ${args.origin_city_or_country} to ${args.destination_city_or_country} (${args.weight_kg}kg)`, sender);
+  } else if (name === 'generate_checkout_link') {
     const link = await generateCheckoutLink(supabase, userId, args.amount, sender, channelId);
     if (link) {
       await logBotActivity(supabase, userId, 'tool_call', `💎 AGI Engine closing deal ($${args.amount}) with direct link.`, sender);
@@ -468,6 +478,23 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   `.trim();
 
   const tools = [
+    {
+      type: 'function',
+      function: {
+        name: 'calculate_custom_quote',
+        description: 'Calculates a specific price quote for a service based on variables (e.g. shipping distance and weight). DO NOT call this until you have all required parameters from the user.',
+        parameters: {
+          type: 'object',
+          properties: {
+            origin_city_or_country: { type: 'string', description: 'Pickup location (City, State, or Country)' },
+            destination_city_or_country: { type: 'string', description: 'Dropoff location (City, State, or Country)' },
+            weight_kg: { type: 'number', description: 'Total weight of the shipment in KG. If user gives LBS, convert to KG.' },
+            items_description: { type: 'string', description: 'What is being shipped (optional but helpful)' }
+          },
+          required: ['origin_city_or_country', 'destination_city_or_country', 'weight_kg']
+        }
+      }
+    },
     {
       type: 'function',
       function: {
