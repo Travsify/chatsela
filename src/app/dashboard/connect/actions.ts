@@ -204,7 +204,7 @@ export async function getWidgetSettings() {
     .from('whatsapp_sessions')
     .select('phone_number')
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
   if (error) return { success: false, error: error.message };
   return { 

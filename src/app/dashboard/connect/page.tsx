@@ -209,7 +209,14 @@ export default function ConnectStorePage() {
           {selected === 'custom' && <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '12px', marginBottom: '20px' }}>← Back to Platforms</button>}
           
           <h2 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>Smart Website Snippet</h2>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '32px' }}>Paste this code into the <b>Head</b> or <b>Footer</b> of your website to enable God-Mode Sync.</p>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>Paste this code into the <b>Head</b> or <b>Footer</b> of your website to enable God-Mode Sync.</p>
+
+          {widgetSettings?.whatsapp_phone && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(37,211,102,0.1)', border: '1px solid rgba(37,211,102,0.2)', borderRadius: '20px', marginBottom: '24px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#25D366' }} />
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#25D366' }}>✅ Active WhatsApp Connection: {widgetSettings.whatsapp_phone}</span>
+            </div>
+          )}
 
           <div style={{ background: 'rgba(255,255,255,0.02)', padding: '24px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
