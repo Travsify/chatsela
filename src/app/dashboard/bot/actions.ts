@@ -598,3 +598,70 @@ export async function resolveKnowledgeGap(gapId: string, question: string, answe
 
   return { success: true };
 }
+
+// ── Widget Management ─────────────────────────────────────────────────────────
+
+export async function getWidgetSettings() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  let { data, error } = await supabase
+    .from('profiles')
+    .select('widget_icon_enabled, api_key, website_url, snippet_verified_at')
+    .eq('id', user.id)
+    .single();
+
+  // 🔑 Auto-generate Public API Key if missing
+  if (data && !data.api_key) {
+    const newKey = `pk_${Math.random().toString(36).substring(2)}${Math.random().toString(36).substring(2)}`;
+    await supabase.from('profiles').update({ api_key: newKey, api_key_created_at: new Date().toISOString() }).eq('id', user.id);
+    data.api_key = newKey;
+  }
+
+  if (error) return { success: false, error: error.message };
+  return { success: true, settings: data };
+}
+
+export async function saveWidgetSettings(enabled: boolean, websiteUrl?: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ 
+      widget_icon_enabled: enabled,
+      website_url: websiteUrl || null
+    })
+    .eq('id', user.id);
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+export async function verifySnippetConnection() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data: connector } = await supabase
+    .from('external_connectors')
+    .select('last_sync_at')
+    .eq('user_id', user.id)
+    .eq('platform', 'custom')
+    .single();
+
+  if (connector?.last_sync_at) {
+    const lastSync = new Date(connector.last_sync_at);
+    const now = new Date();
+    const diff = now.getTime() - lastSync.getTime();
+    
+    if (diff < 3600000) { // Verified if seen in last hour
+      await supabase.from('profiles').update({ snippet_verified_at: now.toISOString() }).eq('id', user.id);
+      return { success: true, last_seen: connector.last_sync_at };
+    }
+  }
+
+  return { success: false, error: 'No recent connection detected. Ensure the snippet is added to your website and you have visited a page.' };
+}
