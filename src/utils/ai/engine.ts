@@ -231,7 +231,7 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   if (!bot) return null;
   const userId = bot.user_id;
 
-  const [profileResult, productsResult, faqsResult, kbResult, sessionResult] = await Promise.all([
+  const [profileResult, productsResult, faqsResult, kbResult, servicesResult, sessionResult] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', userId).single(),
     supabase.from('products').select('*').eq('user_id', userId).eq('is_active', true).limit(20),
     supabase.from('faqs').select('*').eq('user_id', userId).limit(20),
