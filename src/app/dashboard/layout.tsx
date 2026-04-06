@@ -22,11 +22,18 @@ export default async function DashboardLayout({
     .eq('id', user.id)
     .single();
 
+  const { data: bot } = await supabase
+    .from('bots')
+    .select('status')
+    .eq('user_id', user.id)
+    .single();
+
   return (
     <div className="dashboard-container">
       <Sidebar 
         businessName={profile?.business_name || user.email?.split('@')[0]} 
         billingTier={profile?.billing_tier} 
+        isBotActive={bot?.status === 'active'}
       />
       <main className="main-content">
         {children}

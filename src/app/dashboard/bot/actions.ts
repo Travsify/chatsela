@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
+import { revalidatePath } from 'next/cache';
 import { executeChatSelaIntelligence, executeChatSelaEmbedding } from '@/utils/ai/engine';
 import { encrypt, decrypt } from '@/utils/encryption';
 
@@ -359,6 +360,21 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
 }
 
 // ─── Bot Config ─────────────────────────────────────────────────────────────
+
+export async function toggleBotStatus(newStatus: 'active' | 'inactive') {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { error } = await supabase
+    .from('bots')
+    .update({ status: newStatus })
+    .eq('user_id', user.id);
+
+  if (error) return { success: false, error: error.message };
+  revalidatePath('/dashboard');
+  return { success: true };
+}
 
 export async function saveBotSettings(name: string, prompt: string, welcome_message: string, menu_options: string[], sequences?: any[]) {
   const supabase = await createClient();

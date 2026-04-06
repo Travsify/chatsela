@@ -4,17 +4,14 @@ import React from 'react';
 import { usePathname } from 'next/navigation';
 import { logout } from '@/app/auth/actions';
 
-export default function Sidebar({ businessName, billingTier }: { businessName?: string, billingTier?: string }) {
+export default function Sidebar({ businessName, billingTier, isBotActive }: { businessName?: string, billingTier?: string, isBotActive?: boolean }) {
   const pathname = usePathname();
 
   const menuItems = [
-    { name: 'Dashboard', href: '/dashboard', icon: '📊' },
-    { name: '🤖 Bot Identity', href: '/dashboard/bot', icon: '👤' },
-    { name: '🎓 Train Your Bot', href: '/dashboard/train', icon: '🧠' },
-    { name: '🔌 Connect Website', href: '/dashboard/connect', icon: '📎' },
-    { name: '📁 Product Catalog', href: '/dashboard/products', icon: '📦' },
-    { name: '💬 Sales & Insights', href: '/dashboard/leads', icon: '📈' },
-    { name: '⚙️ System Settings', href: '/dashboard/settings', icon: '⚙️' }
+    { name: '🚀 Command Center', href: '/dashboard', icon: '' },
+    { name: '🧠 Intelligence Hub', href: '/dashboard/bot', icon: '' },
+    { name: '📈 Sales Feed', href: '/dashboard/leads', icon: '' },
+    { name: '⚙️ Settings', href: '/dashboard/settings', icon: '' }
   ];
 
   return (
@@ -59,30 +56,30 @@ export default function Sidebar({ businessName, billingTier }: { businessName?: 
           })}
         </nav>
       
-        <div style={{ marginTop: 'auto' }}>
+        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="glass" style={{ padding: '20px', borderRadius: '16px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Engine Status</p>
+              <p style={{ fontWeight: 800, color: isBotActive ? '#00ff88' : '#ff4444', fontSize: '14px' }}>● {isBotActive ? 'ACTIVE' : 'PAUSED'}</p>
+            </div>
+            <div style={{ padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', cursor: 'pointer' }}>⚙️</div>
+          </div>
+
           <form action={logout}>
             <button style={{ 
               width: '100%', 
               background: 'transparent', 
-              border: '1px solid rgba(255,255,255,0.1)', 
+              border: '1px solid rgba(255,255,255,0.05)', 
               color: 'var(--text-muted)',
               padding: '12px', 
               borderRadius: '12px', 
-              fontSize: '14px', 
+              fontSize: '13px', 
               cursor: 'pointer',
-              marginBottom: '20px',
               transition: 'all 0.3s'
             }} className="glass-hover">
               Logout
             </button>
           </form>
-          <div className="glass" style={{ padding: '20px', borderRadius: '16px', fontSize: '13px' }}>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '8px', fontSize: '12px' }}>Current Account</p>
-            <p style={{ fontWeight: 600, marginBottom: '15px' }}>{billingTier?.toUpperCase() || 'STARTER'} TRIAL</p>
-            <a href="/dashboard/pricing" style={{ display: 'block', textAlign: 'center', width: '100%', background: 'var(--grad-primary)', border: 'none', padding: '10px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', color: '#000', textDecoration: 'none' }}>
-              Upgrade Plan
-            </a>
-          </div>
         </div>
       </aside>
 

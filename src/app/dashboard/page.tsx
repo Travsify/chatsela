@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getDashboardStats } from './actions';
 import WhatsAppConnector from '@/components/WhatsAppConnector';
+import { toggleBotStatus, scrapeWebsiteToKnowledgeBase } from './bot/actions';
+import { revalidatePath } from 'next/cache';
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -12,223 +14,181 @@ export default async function Dashboard() {
   if (!user) redirect('/login');
 
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  const { data: bot } = await supabase.from('bots').select('*').eq('user_id', user.id).maybeSingle();
   
-  // Dashboard Intelligence (Real Data)
   const stats = await getDashboardStats().catch(() => ({ totalValue: 0, hotLeads: 0, kbCount: 0, totalInsights: 0 }));
-
-  // Fetch Dashboard Statuses
-  const { data: session } = await supabase.from('whatsapp_sessions').select('status, phone_number').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  const { data: session } = await supabase.from('whatsapp_sessions').select('status, phone_number').eq('user_id', user.id).maybeSingle();
+  
   const isConnected = session?.status === 'connected';
-  const isSnippetVerified = !!profile?.snippet_verified_at;
+  const isBotActive = bot?.status === 'active';
 
-  // 🛰️ RESTORE RECENT INTELLIGENCE FETCH
   const { data: recentInsights } = await supabase
     .from('chat_insights')
     .select('*')
     .eq('user_id', user.id)
     .order('last_interaction_at', { ascending: false })
-    .limit(3);
+    .limit(5);
 
   const businessName = profile?.business_name || user.email?.split('@')[0];
 
-  return (
-    <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '30px', padding: '20px' }}>
-      
-      {/* ── Dashboard Hero: AI Status ────────────────────────────────────────── */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h1 style={{ fontSize: '32px', fontWeight: '800', marginBottom: '8px', letterSpacing: '-0.02em' }}>
-            Hello, {businessName} 👋
-          </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-             {/* 🟢 WhatsApp Status */}
-             <div style={{ 
-               display: 'flex', 
-               alignItems: 'center', 
-               gap: '8px', 
-               padding: '6px 14px', 
-               borderRadius: '20px', 
-               background: isConnected ? 'rgba(37, 211, 102, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-               border: `1px solid ${isConnected ? 'rgba(37, 211, 102, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
-               fontSize: '12px',
-               fontWeight: '700',
-               color: isConnected ? '#25d366' : 'var(--text-muted)'
-             }}>
-               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isConnected ? '#25d366' : 'gray', boxShadow: isConnected ? '0 0 10px #25d366' : 'none' }} />
-               {isConnected ? 'WhatsApp: CONNECTED' : 'WhatsApp: OFFLINE'}
-             </div>
+  // Actions for the UI
+  async function handleToggle(formData: FormData) {
+    'use server';
+    const status = formData.get('status') === 'active' ? 'inactive' : 'active';
+    await toggleBotStatus(status as any);
+  }
 
-             {/* 🌐 Website Status */}
-             <div style={{ 
-               display: 'flex', 
-               alignItems: 'center', 
-               gap: '8px', 
-               padding: '6px 14px', 
-               borderRadius: '20px', 
-               background: isSnippetVerified ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-               border: `1px solid ${isSnippetVerified ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
-               fontSize: '12px',
-               fontWeight: '700',
-               color: isSnippetVerified ? '#3b82f6' : 'var(--text-muted)'
-             }}>
-               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSnippetVerified ? '#3b82f6' : 'gray', boxShadow: isSnippetVerified ? '0 0 10px #3b82f6' : 'none' }} />
-               {isSnippetVerified ? 'Website Sync: ACTIVE' : 'Website: NOT CONNECTED'}
-             </div>
+  return (
+    <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '40px', padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+      
+      {/* ── COMMAND CENTER HERO ── */}
+      <section style={{ 
+        padding: '60px', 
+        borderRadius: '40px', 
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+        border: '1px solid rgba(255,255,255,0.05)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+        gap: '24px',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Glow Background Decor */}
+        <div style={{ position: 'absolute', top: '-100px', left: '50%', transform: 'translateX(-50%)', width: '400px', height: '400px', background: isBotActive ? 'radial-gradient(circle, rgba(0,255,136,0.1) 0%, transparent 70%)' : 'radial-gradient(circle, rgba(255,68,68,0.1) 0%, transparent 70%)', zIndex: 0 }} />
+
+        <div style={{ zIndex: 1 }}>
+          <h1 style={{ fontSize: '48px', fontWeight: 900, letterSpacing: '-0.04em', marginBottom: '12px' }}>
+            {isBotActive ? 'Your Sales Engine is Live 🚀' : 'AI Engine is Paused ⏸️'}
+          </h1>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '18px', maxWidth: '600px', margin: '0 auto 32px' }}>
+            {isBotActive 
+              ? `Currently managing conversations for ${businessName} with God-Mode intelligence active.`
+              : `Total autonomy is temporarily suspended. Click below to re-engage your sales closer.`}
+          </p>
+
+          <form action={handleToggle}>
+            <input type="hidden" name="status" value={bot?.status || 'inactive'} />
+            <button className="glow-btn" style={{ 
+              padding: '20px 60px', 
+              fontSize: '18px', 
+              borderRadius: '20px',
+              background: isBotActive ? 'var(--grad-primary)' : 'linear-gradient(135deg, #444, #222)',
+              color: isBotActive ? '#000' : '#fff',
+              border: isBotActive ? 'none' : '1px solid rgba(255,255,255,0.1)'
+            }}>
+              {isBotActive ? 'PAUSE AI ENGINE' : 'ACTIVATE AI ENGINE'}
+            </button>
+          </form>
+        </div>
+
+        {/* Quick Connection Status */}
+        <div style={{ display: 'flex', gap: '16px', marginTop: '20px', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: isConnected ? '#00ff88' : '#ff4444' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isConnected ? '#00ff88' : '#ff4444', boxShadow: isConnected ? '0 0 10px #00ff88' : 'none' }} />
+            {isConnected ? 'WhatsApp Bound' : 'WhatsApp Disconnected'}
+          </div>
+          <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: profile?.website_url ? '#3b82f6' : 'rgba(255,255,255,0.3)' }}>
+            <span>🌐</span>
+            {profile?.website_url ? `${profile.website_url.replace(/^https?:\/\//, '')} Linked` : 'No Website Connected'}
           </div>
         </div>
-        
-        <Link href="/dashboard/leads" className="glass-hover" style={{ 
-          padding: '12px 24px', 
-          borderRadius: '14px', 
-          backgroundColor: 'rgba(255,255,255,0.05)', 
-          color: '#fff', 
-          fontSize: '14px', 
-          fontWeight: '600',
-          textDecoration: 'none',
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          View Sales Intelligence →
-        </Link>
-      </header>
+      </section>
 
-      {/* ── Intelligence Grid (Stats) ────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-        {[
-          { label: 'Pipeline Value', val: `$${stats.totalValue.toLocaleString()}`, icon: '💰', color: '#10b981' },
-          { label: 'Hot Leads', val: stats.hotLeads, icon: '🔥', color: '#f59e0b' },
-          { label: 'Trained Facts', val: stats.kbCount, icon: '🧠', color: '#3b82f6' },
-          { label: 'Total Inquiries', val: stats.totalInsights, icon: '📨', color: '#8b5cf6' }
-        ].map((stat, i) => (
-          <div key={i} className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: '24px', marginBottom: '16px' }}>{stat.icon}</div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', fontWeight: '700' }}>
-              {stat.label}
-            </p>
-            <div style={{ fontSize: '28px', fontWeight: '800', color: stat.color }}>{stat.val}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
+        
+        {/* ── MAGIC SETUP CARD ── */}
+        <section className="glass" style={{ padding: '40px', borderRadius: '32px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <h3 style={{ fontSize: '20px', fontWeight: 800 }}>🧠 Magic Intelligence Sync</h3>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '14px', lineHeight: '1.6' }}>
+            Paste your business URL below. ChatSela will crawl your entire site, extract prices, and train your AI in seconds. No manual typing required.
+          </p>
+          
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <input 
+              defaultValue={profile?.website_url || ''} 
+              placeholder="https://yourbusiness.com" 
+              style={{
+                flex: 1,
+                padding: '16px 20px',
+                borderRadius: '16px',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#fff',
+                fontSize: '14px',
+                outline: 'none'
+              }}
+            />
+            <button className="glow-btn" style={{ padding: '0 24px', borderRadius: '16px', fontSize: '14px' }}>
+              SYNC NOW
+            </button>
           </div>
-        ))}
-      </div>
+          
+          <div style={{ marginTop: 'auto', padding: '16px', borderRadius: '16px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.1)', fontSize: '13px', color: '#3b82f6' }}>
+            🚀 <b>Pro Tip:</b> God-Mode uses this URL to find and share pricing PDFs automatically with customers.
+          </div>
+        </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '30px' }}>
-        
-        {/* ── Left: High-Priority Opportunities (Insights Preview) ────────────── */}
-        <section className="glass" style={{ padding: '30px', borderRadius: '32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* ── LIVE INTELLIGENCE TICKER ── */}
+        <section className="glass" style={{ padding: '40px', borderRadius: '32px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Recent Intelligence</h3>
-            <Link href="/dashboard/leads" style={{ fontSize: '13px', color: 'var(--accent-primary)', textDecoration: 'none' }}>View All Intelligence</Link>
+            <h3 style={{ fontSize: '20px', fontWeight: 800 }}>📈 Recent Intelligence</h3>
+            <Link href="/dashboard/leads" style={{ color: 'var(--accent-primary)', fontSize: '13px', textDecoration: 'none' }}>View All →</Link>
           </div>
 
           {!recentInsights || recentInsights.length === 0 ? (
-             <div style={{ padding: '60px 20px', textAlign: 'center', opacity: 0.5 }}>
-                <p>Waiting for the first conversation analysis...</p>
-             </div>
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>
+              Waiting for live sales activity...
+            </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {recentInsights.map((insight, idx) => (
-                <div key={idx} style={{ 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {recentInsights.map((insight, i) => (
+                <div key={i} style={{ 
                   padding: '16px', 
                   borderRadius: '16px', 
-                  backgroundColor: 'rgba(255,255,255,0.02)', 
-                  border: '1px solid rgba(255,255,255,0.05)',
+                  background: 'rgba(255,255,255,0.02)', 
+                  border: '1px solid rgba(255,255,255,0.03)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center'
                 }}>
-                  <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                    <div style={{ fontSize: '20px' }}>{insight.sentiment === 'positive' ? '🔥' : '💬'}</div>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ fontSize: '18px' }}>{insight.sentiment === 'positive' ? '💎' : '💬'}</div>
                     <div>
-                      <p style={{ fontSize: '14px', fontWeight: '700', marginBottom: '2px' }}>{insight.customer_phone}</p>
-                      <p style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {insight.summary}
-                      </p>
+                      <p style={{ fontSize: '14px', fontWeight: 700 }}>{insight.customer_phone}</p>
+                      <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{insight.intent.toUpperCase()}</p>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontSize: '14px', fontWeight: '700', color: insight.sentiment === 'positive' ? '#10b981' : '#fff' }}>
+                    <p style={{ fontSize: '14px', fontWeight: 800, color: insight.sentiment === 'positive' ? '#00ff88' : '#fff' }}>
                       ${Number(insight.value_estimate).toLocaleString()}
                     </p>
-                    <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Est. Value</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-          
-          <div className="glass" style={{ marginTop: 'auto', padding: '20px', borderRadius: '20px', background: 'linear-gradient(135deg, rgba(0, 168, 132, 0.05), transparent)', border: '1px solid rgba(0, 168, 132, 0.1)' }}>
-             <p style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>🚀 Tip: Feed the AI</p>
-             <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                Add your website or specific business facts to the **Knowledge Vault** to make the Sales Engine even more accurate.
-             </p>
-             <Link href="/dashboard/bot" style={{ display: 'inline-block', marginTop: '12px', fontSize: '12px', fontWeight: '700', color: '#00a884', textDecoration: 'none' }}>
-                Manage Knowledge →
-             </Link>
-          </div>
         </section>
 
-        {/* ── Right: AI Pulse & Quick Tools ──────────────────────────────────── */}
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-          
-          {!isSnippetVerified && (
-            <div className="glass" style={{ padding: '24px', borderRadius: '24px', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent)', border: '1px dashed rgba(59, 130, 246, 0.3)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontSize: '18px' }}>🌐</span>
-                <span style={{ background: 'rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: '8px', fontSize: '10px' }}>SETUP NEEDED</span>
-              </div>
-              <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '8px' }}>Connect Your Website</h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
-                Your AI bot needs to "read" your website to answer customer questions accurately.
-              </p>
-              <Link href="/dashboard/connect" style={{ display: 'block', width: '100%', textAlign: 'center', background: '#3b82f6', color: '#fff', padding: '10px', borderRadius: '12px', fontSize: '13px', fontWeight: '700', textDecoration: 'none' }}>
-                Install Snippet →
-              </Link>
-            </div>
-          )}
-
-          {isSnippetVerified && (
-            <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontSize: '18px' }}>📡</span>
-                <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '4px 8px', borderRadius: '8px', fontSize: '10px', fontWeight: '800' }}>VERIFIED</span>
-              </div>
-              <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '8px' }}>Website Intelligence</h4>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
-                Your bot is currently scraping and learning from your web pages in real-time.
-              </p>
-              <Link href="/dashboard/connect" style={{ display: 'block', width: '100%', textAlign: 'center', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '10px', borderRadius: '12px', fontSize: '13px', fontWeight: '700', textDecoration: 'none', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                View Live Sync Feed →
-              </Link>
-            </div>
-          )}
-
-          {!isConnected && <WhatsAppConnector />}
-          
-          <div className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '16px' }}>🤖 Sales Agent Features</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-               {[
-                 { name: 'Structured Sequences', desc: 'Auto-reply to common steps', active: true },
-                 { name: 'Seamless Checkouts', desc: 'Programmable payment links', active: true },
-                 { name: 'Lead Sentiment Analysis', desc: 'Predicting purchase intent', active: true },
-                 { name: 'Multi-Source Knowledge', desc: 'Reading your site & docs', active: true },
-               ].map((f, i) => (
-                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', opacity: f.active ? 1 : 0.4 }}>
-                    <div style={{ color: '#10b981', fontSize: '14px' }}>✓</div>
-                    <div>
-                      <p style={{ fontSize: '13px', fontWeight: '600' }}>{f.name}</p>
-                      <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{f.desc}</p>
-                    </div>
-                 </div>
-               ))}
-            </div>
-          </div>
-        </section>
       </div>
 
+      {!isConnected && <WhatsAppConnector />}
+
       <style>{`
-        @keyframes pulse {
-          0% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4); }
-          70% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); }
-          100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); }
+        .glow-btn {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: pointer;
+          font-weight: 700;
+        }
+        .glow-btn:hover {
+          transform: translateY(-2px);
+          filter: brightness(1.1);
+          box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        .glow-btn:active {
+          transform: translateY(0);
         }
       `}</style>
     </main>
