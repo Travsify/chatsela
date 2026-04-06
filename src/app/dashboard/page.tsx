@@ -11,7 +11,7 @@ export default async function Dashboard() {
 
   if (!user) redirect('/login');
 
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
   
   // Dashboard Intelligence (Real Data)
   const stats = await getDashboardStats().catch(() => ({ totalValue: 0, hotLeads: 0, kbCount: 0, totalInsights: 0 }));
@@ -20,6 +20,14 @@ export default async function Dashboard() {
   const { data: session } = await supabase.from('whatsapp_sessions').select('status, phone_number').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
   const isConnected = session?.status === 'connected';
   const isSnippetVerified = !!profile?.snippet_verified_at;
+
+  // 🛰️ RESTORE RECENT INTELLIGENCE FETCH
+  const { data: recentInsights } = await supabase
+    .from('chat_insights')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('last_interaction_at', { ascending: false })
+    .limit(3);
 
   const businessName = profile?.business_name || user.email?.split('@')[0];
 
