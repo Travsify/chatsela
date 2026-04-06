@@ -37,6 +37,11 @@ export default function SettingsPage() {
   const [exchangeRate, setExchangeRate] = useState(1600.0);
   const [manualRateActive, setManualRateActive] = useState(true);
 
+  // Autonomous / God-Mode States
+  const [isAutonomous, setIsAutonomous] = useState(false);
+  const [autonomousInstruction, setAutonomousInstruction] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -56,6 +61,9 @@ export default function SettingsPage() {
         setTargetCurrency(ints.integrations.target_currency || 'NGN');
         setExchangeRate(ints.integrations.exchange_rate || 1600.0);
         setManualRateActive(ints.integrations.manual_rate_active ?? true);
+        setIsAutonomous(ints.integrations.is_autonomous || false);
+        setAutonomousInstruction(ints.integrations.autonomous_instruction || '');
+        setWebsiteUrl(ints.integrations.website_url || '');
       }
     })();
   }, []);
@@ -69,7 +77,10 @@ export default function SettingsPage() {
       base_currency: baseCurrency,
       target_currency: targetCurrency,
       exchange_rate: exchangeRate,
-      manual_rate_active: manualRateActive
+      manual_rate_active: manualRateActive,
+      is_autonomous: isAutonomous,
+      autonomous_instruction: autonomousInstruction,
+      website_url: websiteUrl
     });
 
     if (res.success) {
@@ -145,6 +156,54 @@ export default function SettingsPage() {
             </div>
           </div>
           <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '12px' }}>This rate will be used by the AI to convert all product prices during WhatsApp sales conversations.</p>
+        </div>
+      </section>
+
+      {/* ── God-Mode / Autonomous Engine ── */}
+      <section style={{ ...commonSectionStyle, border: '1px solid rgba(0, 255, 136, 0.1)', background: 'linear-gradient(135deg, rgba(0,255,136,0.03) 0%, transparent 100%)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '20px' }}>🤖</span>
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: 700 }}>Autonomous God-Mode</h3>
+              <p style={{ fontSize: '12px', color: 'rgba(0, 255, 136, 0.7)', fontWeight: 700 }}>AI INDEPENDENCE CONTROL</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>Strict Autonomy {isAutonomous ? 'ON' : 'OFF'}</span>
+            <div 
+              onClick={() => setIsAutonomous(!isAutonomous)}
+              style={{ width: '50px', height: '24px', background: isAutonomous ? 'var(--accent-primary)' : 'rgba(255,255,255,0.1)', borderRadius: '12px', cursor: 'pointer', position: 'relative', transition: 'all 0.3s' }}
+            >
+              <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '3px', left: isAutonomous ? '28px' : '3px', transition: 'all 0.3s' }} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div>
+            <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Prime Website URL (Knowledge Source)</label>
+            <input 
+              type="text" 
+              value={websiteUrl} 
+              onChange={(e) => setWebsiteUrl(e.target.value)} 
+              style={INPUT_STYLE} 
+              placeholder="https://yourbusiness.com" 
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Custom Autonomous Instructions (The "Closing" Logic)</label>
+            <textarea 
+              rows={4} 
+              value={autonomousInstruction} 
+              onChange={(e) => setAutonomousInstruction(e.target.value)} 
+              style={{ ...INPUT_STYLE, resize: 'vertical' }} 
+              placeholder="e.g. Always push for the premium plan. If the customer hesitates on price, offer a 10% discount immediately if they pay via Stripe today." 
+            />
+            <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '8px' }}>
+              These high-level directives override the bot's base personality when it needs to close a deal or handle a complex inquiry.
+            </p>
+          </div>
         </div>
       </section>
 

@@ -90,11 +90,34 @@ export default function IntelligenceHubPage() {
     if (!newFact.trim()) return;
     setIsAddingFact(true);
     const res = await addKnowledgeFact(newFact);
-    if (res.success) {
+    if (res.success && res.document) {
       setKbDocs([res.document, ...kbDocs]);
       setNewFact('');
     }
     setIsAddingFact(false);
+  };
+
+  const handleDeleteFact = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this fact?')) return;
+    const res = await deleteKnowledgeFact(id);
+    if (res.success) {
+      setKbDocs(kbDocs.filter(d => d.id !== id));
+    } else {
+      alert('❌ Delete failed');
+    }
+  };
+
+  const handleResolveGap = async (gap: any, answer: string) => {
+    if (!answer.trim()) return;
+    const res = await resolveKnowledgeGap(gap.id, gap.question, answer, gap.customer_phone || '');
+    if (res.success) {
+      setGaps(gaps.filter(g => g.id !== gap.id));
+      const kb = await getKnowledgeBaseDocs();
+      if (kb.success) setKbDocs(kb.documents || []);
+      alert('✅ Training Integrated!');
+    } else {
+      alert('❌ Failed to resolve gap.');
+    }
   };
 
   return (
@@ -209,7 +232,7 @@ export default function IntelligenceHubPage() {
                     <span style={{ color: 'var(--accent-primary)', fontSize: '10px', marginRight: '8px' }}>[{doc.category || 'FACT'}]</span>
                     {doc.content}
                   </p>
-                  <button style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => deleteKnowledgeFact(doc.id)}>✕</button>
+                  <button style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => handleDeleteFact(doc.id)}>✕</button>
                 </div>
               ))}
             </div>
@@ -230,8 +253,26 @@ export default function IntelligenceHubPage() {
                   <div key={gap.id} style={{ padding: '20px', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
                     <p style={{ fontWeight: 700, fontSize: '15px' }}>❓ {gap.question}</p>
                     <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                      <input placeholder="Answer this question..." style={INPUT_STYLE} />
-                      <button className="glow-btn" style={{ padding: '0 20px', fontSize: '12px' }}>REPLY & TRAIN</button>
+                      <input 
+                        id={`gap-ans-${gap.id}`}
+                        placeholder="Answer this question..." 
+                        style={INPUT_STYLE} 
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleResolveGap(gap, (e.target as HTMLInputElement).value);
+                          }
+                        }}
+                      />
+                      <button 
+                        className="glow-btn" 
+                        style={{ padding: '0 20px', fontSize: '12px' }}
+                        onClick={() => {
+                          const val = (document.getElementById(`gap-ans-${gap.id}`) as HTMLInputElement).value;
+                          handleResolveGap(gap, val);
+                        }}
+                      >
+                        REPLY & TRAIN
+                      </button>
                     </div>
                   </div>
                 ))}

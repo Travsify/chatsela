@@ -73,15 +73,20 @@ export default function Dashboard() {
 
   const handleHandshake = async () => {
     setIsSyncing(true);
-    const { syncHandshake } = await import('./actions');
-    const res = await syncHandshake();
+    try {
+      const { syncHandshake } = await import('./actions');
+      const res = await syncHandshake();
+      if (res.authenticated) alert(`✅ Connected to ${res.phone}`);
+      else alert(`❌ ${res.reason || 'Handshake failed.'}`);
+    } catch (e: any) {
+      alert(`❌ Sync failed: ${e.message}`);
+    }
     setIsSyncing(false);
-    if (res.authenticated) alert(`✅ Connected to ${res.phone}`);
-    else alert(`❌ ${res.reason || 'Handshake failed.'}`);
   };
 
   const copySnippet = () => {
-    const code = `<script src="${process.env.NEXT_PUBLIC_SITE_URL}/widget.js" data-id="${user.id}"></script>`;
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+    const code = `<script src="${baseUrl}/widget.js" data-id="${user?.id}"></script>`;
     navigator.clipboard.writeText(code);
     alert('Snippet copied to clipboard!');
   };
