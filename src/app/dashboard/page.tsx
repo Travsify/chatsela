@@ -116,9 +116,7 @@ export default function Dashboard() {
               : `Total autonomy is temporarily suspended. Click below to re-engage your sales closer.`}
           </p>
 
-          <form action={handleToggle}>
-            <input type="hidden" name="status" value={bot?.status || 'inactive'} />
-            <button className="glow-btn" style={{ 
+          <button onClick={handleToggle} className="glow-btn" style={{ 
               padding: '20px 60px', 
               fontSize: '18px', 
               borderRadius: '20px',
@@ -127,8 +125,8 @@ export default function Dashboard() {
               border: isBotActive ? 'none' : '1px solid rgba(255,255,255,0.1)'
             }}>
               {isBotActive ? 'PAUSE AI ENGINE' : 'ACTIVATE AI ENGINE'}
-            </button>
-          </form>
+          </button>
+
         </div>
 
         {/* Quick Connection Status */}
@@ -179,10 +177,27 @@ export default function Dashboard() {
                 outline: 'none'
               }}
             />
-            <button onClick={handleSync} disabled={isSyncing} className="glow-btn" style={{ padding: '0 24px', borderRadius: '16px', fontSize: '14px', background: '#3b82f6', color: '#fff' }}>
-              {isSyncing ? 'SYNCING...' : 'SYNC NOW'}
-            </button>
           </div>
+          <button 
+            onClick={handleSync} 
+            disabled={isSyncing || !websiteUrl} 
+            style={{ 
+              padding: '16px 32px', 
+              borderRadius: '16px', 
+              fontSize: '16px', 
+              fontWeight: 800, 
+              background: isSyncing ? '#333' : 'linear-gradient(135deg, #3b82f6, #8b5cf6)', 
+              color: '#fff', 
+              border: 'none', 
+              cursor: isSyncing || !websiteUrl ? 'not-allowed' : 'pointer',
+              opacity: isSyncing || !websiteUrl ? 0.5 : 1,
+              transition: 'all 0.3s ease',
+              width: '100%'
+            }}
+          >
+            {isSyncing ? '⏳ CRAWLING YOUR SITE...' : '🚀 CRAWL & TRAIN MY AI'}
+          </button>
+
           
           <div style={{ marginTop: 'auto', padding: '16px', borderRadius: '16px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.1)', fontSize: '13px', color: '#3b82f6' }}>
             🚀 <b>Pro Tip:</b> God-Mode uses this URL to find and share pricing PDFs automatically with customers.
