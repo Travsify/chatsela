@@ -60,6 +60,7 @@ export default function ConnectStorePage() {
   const [storeUrl, setStoreUrl] = useState('');
   const [token, setToken] = useState('');
   const [secret, setSecret] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
   
   const [widgetSettings, setWidgetSettings] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -210,7 +211,7 @@ export default function ConnectStorePage() {
           <h2 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '8px' }}>Smart Website Snippet</h2>
           <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '32px' }}>Paste this code into the <b>Head</b> or <b>Footer</b> of your website to enable God-Mode Sync.</p>
 
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '24px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '32px' }}>
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '24px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span style={{ fontSize: '12px', fontWeight: 700, color: '#25D366' }}>WIDGET CODE (v2)</span>
               <button 
@@ -221,8 +222,28 @@ export default function ConnectStorePage() {
               </button>
             </div>
             <div style={CODE_STYLE}>
-              {`<script src="${window.location.origin}/widget.js?key=${widgetSettings?.api_key || 'GENERATING...'}&icon=${widgetSettings?.widget_icon_enabled || 'false'}&phone=${widgetSettings?.whatsapp_phone || 'YOUR_PHONE'}"></script>`}
+              {`<script src="${window.location.origin}/widget.js?key=${widgetSettings?.api_key || 'GENERATING...'}&icon=${widgetSettings?.widget_icon_enabled || 'false'}&phone=${(manualPhone || widgetSettings?.whatsapp_phone) || 'YOUR_PHONE'}"></script>`}
             </div>
+          </div>
+
+          {!widgetSettings?.whatsapp_phone && !manualPhone && (
+            <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '18px' }}>⚠️</span>
+              <p style={{ fontSize: '13px', color: '#ff6b6b' }}>
+                <b>No WhatsApp connected.</b> Please enter your number below or <a href="/dashboard/settings" style={{ color: '#fff', textDecoration: 'underline' }}>connect your bot</a>.
+              </p>
+            </div>
+          )}
+
+          <div style={{ marginBottom: '32px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>WhatsApp Number (Manual Override)</label>
+            <input 
+              type="text" 
+              placeholder="e.g. 2348123456789"
+              value={manualPhone}
+              onChange={(e) => setManualPhone(e.target.value)}
+              style={INPUT_STYLE} 
+            />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
