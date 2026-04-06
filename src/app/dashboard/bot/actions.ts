@@ -479,6 +479,68 @@ export async function generateBotConfig(input: string) {
   };
 }
 
+// ─── Quoting Engine Actions ──────────────────────────────────────────────────
+
+export async function getQuoteSettings() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  let { data, error } = await supabase.from('quote_settings').select('*').eq('user_id', user.id).single();
+  
+  if (error && error.code === 'PGRST116') {
+    // Doesn't exist, create default
+    const { data: inserted } = await supabase.from('quote_settings').insert({ user_id: user.id }).select().single();
+    data = inserted;
+  }
+  
+  return { success: true, settings: data };
+}
+
+export async function saveQuoteSettings(settings: { quote_mode: string; webhook_url?: string; webhook_secret?: string }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { error } = await supabase.from('quote_settings').upsert({
+    user_id: user.id,
+    ...settings
+  }, { onConflict: 'user_id' });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+export async function getShippingRates() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data, error } = await supabase.from('shipping_rates').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+  if (error) return { success: false, error: error.message };
+  return { success: true, rates: data };
+}
+
+export async function addShippingRate(rate: { origin_zone: string; destination_zone: string; base_fee: number; rate_per_kg: number; delivery_time_estimate: string }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { error } = await supabase.from('shipping_rates').insert({ user_id: user.id, ...rate });
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+export async function deleteShippingRate(id: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { error } = await supabase.from('shipping_rates').delete().eq('id', id).eq('user_id', user.id);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
 export async function getBotSettings() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

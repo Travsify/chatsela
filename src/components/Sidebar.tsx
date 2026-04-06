@@ -9,8 +9,9 @@ export default function Sidebar({ businessName, billingTier, isBotActive }: { bu
 
   const menuItems = [
     { name: '🚀 Command Center', href: '/dashboard', icon: '' },
-    { name: '🧠 Intelligence Hub', href: '/dashboard/bot', icon: '' },
+    { name: '🤖 Intelligence Hub', href: '/dashboard/bot', icon: '' },
     { name: '📈 Sales Feed', href: '/dashboard/leads', icon: '' },
+    { name: '📦 Logistics Quoting', href: '/dashboard/logistics', icon: '' },
     { name: '⚙️ Settings', href: '/dashboard/settings', icon: '' }
   ];
 
@@ -85,7 +86,7 @@ export default function Sidebar({ businessName, billingTier, isBotActive }: { bu
 
       {/* Mobile Bottom Nav */}
       <nav className="bottom-nav mobile-only">
-        {menuItems.slice(0, 4).map((item, i) => {
+        {menuItems.slice(0, 5).map((item, i) => {
           const isActive = pathname === item.href;
           return (
             <a key={i} href={item.href} style={{
