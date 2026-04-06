@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { getDashboardStats } from './actions';
 import WhatsAppConnector from '@/components/WhatsAppConnector';
 import { toggleBotStatus, scrapeWebsiteToKnowledgeBase } from './bot/actions';
-import { revalidatePath } from 'next/cache';
 
 export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
