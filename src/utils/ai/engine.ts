@@ -327,9 +327,10 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     ? `\n### 💎 VERIFIED SERVICE PRICING LEDGER:\n${servicesData.map(s => `- ${s.name}: ${s.currency} ${s.price} ${s.unit} (${s.description || 'Verified'})`).join('\n')}`
     : '';
 
-  // 🌍 Global Currency Context Injection
+  // 🌍 Global Currency & Time Context Injection
   const currencyContext = `
-  ### 🌍 GLOBAL CURRENCY CONTEXT:
+  ### 🌍 GLOBAL SYSTEM CONTEXT:
+  - CURRENT LOCAL DATE: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
   - Base Currency: ${profile?.base_currency || 'USD'}
   - Target/Local Currency: ${profile?.target_currency || 'NGN'}
   - Exchange Rate (1 ${profile?.base_currency || 'USD'} = ${profile?.exchange_rate || 1600.0} ${profile?.target_currency || 'NGN'})
