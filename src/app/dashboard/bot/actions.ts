@@ -656,25 +656,15 @@ export async function testIntelligence(query: string) {
     
     if (!content) return { answer: `❌ [Extracted Null] Firecrawl could not pull data from ${targetUrl}. Ensure the site is reachable and public.` };
 
-    // Use OpenAI to generate a "Sales Guru" response based on the scrape
-    const fetch = require('node-fetch'); // Fallback if regular fetch is tricky in some environments
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: 'You are ChatSela AGI. Use the website content below to answer the user inquiry. Be concise and sales-driven.' },
-          { role: 'user', content: `Website Content:\n${content}\n\nUser Question: ${query}` }
-        ]
-      })
+    const { executeChatSelaIntelligence } = await import('@/utils/ai/engine');
+    const aiResp = await executeChatSelaIntelligence({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are ChatSela AGI. Use the website content below to answer the user inquiry. Be concise and sales-driven.' },
+        { role: 'user', content: `Website Content:\n${content.substring(0, 6000)}\n\nUser Question: ${query}` }
+      ]
     });
-
-    const data = await resp.json();
-    return { answer: data.choices?.[0]?.message?.content || 'AI could not formulate a response.' };
+    return { answer: aiResp.choices?.[0]?.message?.content || 'AI could not formulate a response.' };
   } catch (err: any) {
     return { answer: `❌ [AGI Error]: ${err.message}` };
   }
