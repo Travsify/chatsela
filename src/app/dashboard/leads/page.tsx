@@ -1,15 +1,50 @@
-import React from 'react';
-import { createClient } from '@/utils/supabase/server';
-import Link from 'next/link';
+'use client';
 
-export default async function LeadsPage() {
-  const supabase = await createClient();
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@/utils/supabase/client';
+import Link from 'next/link';
+import { getBotActivity } from '../actions';
+
+export default function LeadsPage() {
+  const [leads, setLeads] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'leads' | 'activity'>('leads');
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Fetch active leads with insights
-  const { data: leads, error } = await supabase
-    .from('chat_insights')
-    .select('*')
-    .order('last_interaction_at', { ascending: false });
+  const supabase = createClient();
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const [leadsRes, activityRes] = await Promise.all([
+        supabase.from('chat_insights').select('*').eq('user_id', user.id).order('last_interaction_at', { ascending: false }),
+        getBotActivity()
+      ]);
+
+      setLeads(leadsRes.data || []);
+      setActivity(activityRes || []);
+      setIsLoading(false);
+    })();
+
+    // Subscribe to new activity for real-time visibility
+    const channel = supabase
+      .channel('bot_activity_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bot_activity' }, (payload) => {
+        setActivity(prev => [payload.new, ...prev].slice(0, 30));
+        // Also update the Leads if it's an intent event
+        if (payload.new.event_type === 'intent') {
+           // Refresh leads too
+           supabase.from('chat_insights').select('*').order('last_interaction_at', { ascending: false }).then(res => setLeads(res.data || []));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
 
   const totalValue = leads?.reduce((acc, lead) => acc + (Number(lead.value_estimate) || 0), 0) || 0;
 
@@ -18,16 +53,18 @@ export default async function LeadsPage() {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: '800', marginBottom: '8px', letterSpacing: '-0.02em' }}>
-            🔥 Sales Intelligence
+            {activeTab === 'leads' ? '🔥 Sales Intelligence' : '📡 Live Activity Board'}
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '16px' }}>
-            **ChatSela Engine** is analyzing your conversations in real-time to find high-value opportunities.
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '16px' }}>
+            {activeTab === 'leads' 
+              ? 'Real-time analysis of high-intent customers ready to buy.' 
+              : 'Streaming live interactions and system events from your AI Engine.'}
           </p>
         </div>
         
         <div className="glass" style={{ padding: '20px 30px', borderRadius: '20px', textAlign: 'right', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <p style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: '4px' }}>
-            Potential Pipeline Value
+          <p style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>
+            Pipeline Potential
           </p>
           <h2 style={{ fontSize: '28px', fontWeight: '800', color: '#10b981' }}>
             ${totalValue.toLocaleString()}
@@ -35,87 +72,89 @@ export default async function LeadsPage() {
         </div>
       </header>
 
-      {!leads || leads.length === 0 ? (
-        <div className="glass" style={{ padding: '80px 40px', borderRadius: '32px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div style={{ fontSize: '64px', marginBottom: '24px', filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.2))' }}>💬</div>
-          <h3 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '12px' }}>Waiting for the first lead...</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '16px', maxWidth: '400px', margin: '0 auto 32px' }}>
-            When a customer messages your WhatsApp bot, our AI will analyze the intent and display the lead here.
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '24px' }}>
-          {leads.map((lead) => (
-            <div key={lead.id} className="glass" style={{ 
-              padding: '24px', 
-              borderRadius: '24px', 
-              border: '1px solid rgba(255,255,255,0.1)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px',
-              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-              cursor: 'default'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <h4 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>{lead.customer_phone}</h4>
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    Last active {new Date(lead.last_interaction_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-                <div style={{ 
-                  padding: '6px 12px', 
-                  borderRadius: '12px', 
-                  fontSize: '12px', 
-                  fontWeight: '700',
-                  textTransform: 'uppercase',
-                  backgroundColor: lead.sentiment === 'positive' ? 'rgba(16, 185, 129, 0.1)' : lead.sentiment === 'negative' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                  color: lead.sentiment === 'positive' ? '#10b981' : lead.sentiment === 'negative' ? '#ef4444' : 'var(--text-muted)',
-                  border: `1px solid ${lead.sentiment === 'positive' ? 'rgba(16, 185, 129, 0.2)' : lead.sentiment === 'negative' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`
-                }}>
-                  {lead.sentiment === 'positive' ? '🔥 Hot Lead' : lead.sentiment === 'negative' ? '⚠️ At Risk' : '❄️ Warm'}
-                </div>
-              </div>
+      {/* ── TAB SELECTOR ── */}
+      <div style={{ display: 'flex', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '16px', alignSelf: 'flex-start' }}>
+        <button 
+          onClick={() => setActiveTab('leads')}
+          style={{ padding: '12px 24px', borderRadius: '12px', border: 'none', background: activeTab === 'leads' ? 'var(--accent-primary)' : 'transparent', color: activeTab === 'leads' ? '#000' : '#fff', fontWeight: 700, cursor: 'pointer' }}
+        >
+          🔥 LEADS
+        </button>
+        <button 
+          onClick={() => setActiveTab('activity')}
+          style={{ padding: '12px 24px', borderRadius: '12px', border: 'none', background: activeTab === 'activity' ? '#3b82f6' : 'transparent', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+        >
+          📡 LIVE BOARD
+        </button>
+      </div>
 
-              <div style={{ padding: '16px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <p style={{ fontSize: '14px', lineHeight: '1.6', color: '#e2e8f0' }}>
+      {isLoading ? (
+        <div style={{ padding: '100px', textAlign: 'center', opacity: 0.5 }}>Syncing live data...</div>
+      ) : activeTab === 'leads' ? (
+        /* ── LEADS GRID ── */
+        leads.length === 0 ? (
+          <div className="glass" style={{ padding: '80px 40px', borderRadius: '32px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ fontSize: '64px', marginBottom: '24px' }}>💬</div>
+            <h3 style={{ fontSize: '22px', fontWeight: '700' }}>Waiting for high-value intent...</h3>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '24px' }}>
+            {leads.map((lead) => (
+              <div key={lead.id} className="glass" style={{ padding: '24px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <h4 style={{ fontSize: '18px', fontWeight: '800' }}>{lead.customer_phone}</h4>
+                  <span style={{ fontSize: '10px', padding: '4px 8px', background: lead.sentiment === 'positive' ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: lead.sentiment === 'positive' ? '#10b981' : '#888', borderRadius: '8px', fontWeight: 800 }}>
+                    {lead.sentiment?.toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', fontSize: '14px', lineHeight: '1.6' }}>
                   "{lead.summary}"
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <div style={{ flex: 1, padding: '12px', borderRadius: '16px', backgroundColor: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.1)' }}>
-                  <p style={{ fontSize: '10px', textTransform: 'uppercase', color: '#3b82f6', marginBottom: '4px', fontWeight: '700' }}>Intent</p>
-                  <p style={{ fontSize: '14px', fontWeight: '600' }}>{lead.intent.charAt(0).toUpperCase() + lead.intent.slice(1)}</p>
                 </div>
-                <div style={{ flex: 1, padding: '12px', borderRadius: '16px', backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                  <p style={{ fontSize: '10px', textTransform: 'uppercase', color: '#10b981', marginBottom: '4px', fontWeight: '700' }}>Potential</p>
-                  <p style={{ fontSize: '14px', fontWeight: '600' }}>${Number(lead.value_estimate).toLocaleString()}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                   <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>Intent: <b>{lead.intent}</b></div>
+                   <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981' }}>${Number(lead.value_estimate).toLocaleString()}</div>
                 </div>
+                <Link href={`/dashboard/chat?phone=${lead.customer_phone}`} className="glow-btn" style={{ textAlign: 'center', padding: '12px', borderRadius: '12px', background: '#fff', color: '#000', fontSize: '14px', textDecoration: 'none' }}>
+                  OPEN CHAT
+                </Link>
               </div>
-
-              <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: '600', textTransform: 'uppercase' }}>🚀 Recommendation</p>
-                <p style={{ fontSize: '13px', fontStyle: 'italic', color: '#94a3b8' }}>
-                  {lead.next_steps}
-                </p>
-              </div>
-
-              <Link href={`/dashboard/chat?phone=${lead.customer_phone}`} style={{
-                marginTop: '10px',
-                padding: '12px',
-                borderRadius: '14px',
-                backgroundColor: 'var(--foreground)',
-                color: 'var(--background)',
-                textAlign: 'center',
-                fontSize: '14px',
-                fontWeight: '700',
-                textDecoration: 'none'
-              }}>
-                Open Conversation
-              </Link>
-            </div>
-          ))}
+            ))}
+          </div>
+        )
+      ) : (
+        /* ── LIVE ACTIVITY FEED ── */
+        <div className="glass" style={{ padding: '0', borderRadius: '32px', overflow: 'hidden', border: '1px solid rgba(59, 130, 246, 0.1)' }}>
+          <div style={{ padding: '20px 30px', background: 'rgba(59, 130, 246, 0.05)', borderBottom: '1px solid rgba(59, 130, 246, 0.1)', display: 'flex', justifyContent: 'space-between' }}>
+             <span style={{ fontSize: '12px', fontWeight: 800, color: '#3b82f6' }}>SYSTEM LOGS</span>
+             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>Real-time updates active</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {activity.length === 0 ? (
+              <div style={{ padding: '60px', textAlign: 'center', opacity: 0.3 }}>Awaiting first signal...</div>
+            ) : (
+              activity.map((log, i) => (
+                <div key={i} style={{ 
+                  padding: '20px 30px', 
+                  borderBottom: '1px solid rgba(255,255,255,0.03)', 
+                  display: 'flex', 
+                  gap: '20px', 
+                  alignItems: 'flex-start',
+                  background: i === 0 ? 'rgba(59, 130, 246, 0.02)' : 'transparent'
+                }}>
+                  <div style={{ fontSize: '20px' }}>
+                    {log.event_type === 'scrape' ? '🔎' : log.event_type === 'tool_call' ? '💎' : log.event_type === 'intent' ? '🔥' : '⚙️'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '14px', lineHeight: '1.5' }}>{log.message}</p>
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>
+                      <span>{new Date(log.created_at).toLocaleTimeString()}</span>
+                      {log.contact_phone && <span style={{ color: '#3b82f6' }}>• {log.contact_phone}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
     </main>

@@ -56,7 +56,10 @@ export default function IntelligenceHubPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [magicInput, setMagicInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'identity' | 'knowledge' | 'training'>('identity');
+  const [activeTab, setActiveTab] = useState<'identity' | 'knowledge' | 'training' | 'lab'>('identity');
+  const [testQuery, setTestQuery] = useState('');
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -106,7 +109,7 @@ export default function IntelligenceHubPage() {
 
       {/* ── TAB NAVIGATION ── */}
       <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '16px', alignSelf: 'flex-start' }}>
-        {(['identity', 'knowledge', 'training'] as const).map(tab => (
+        {(['identity', 'knowledge', 'training', 'lab'] as const).map(tab => (
           <button 
             key={tab} 
             onClick={() => setActiveTab(tab)}
@@ -122,7 +125,7 @@ export default function IntelligenceHubPage() {
               transition: 'all 0.2s'
             }}
           >
-            {tab.toUpperCase()}
+            {tab === 'lab' ? '🧪 LAB' : tab.toUpperCase()}
           </button>
         ))}
       </div>
@@ -210,6 +213,52 @@ export default function IntelligenceHubPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'lab' && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <div style={{ ...commonSectionStyle, borderLeft: '4px solid var(--accent-primary)' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>🧪 Intelligence Lab (AGI Verified)</h3>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>
+              Want to see your AI in action? Ask a question about your products or business. 
+              The AI will **sweep your website in real-time** to find the answer, proving its God-Mode capabilities.
+            </p>
+            
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+              <input 
+                placeholder="e.g. Do we have any new pricing for the luxury model?" 
+                value={testQuery}
+                onChange={(e) => setTestQuery(e.target.value)}
+                style={INPUT_STYLE} 
+              />
+              <button 
+                className="glow-btn" 
+                disabled={isTesting || !testQuery}
+                onClick={async () => {
+                  setIsTesting(true);
+                  setTestResult(null);
+                  const { testIntelligence } = await import('./actions');
+                  const res = await testIntelligence(testQuery);
+                  setTestResult(res.answer);
+                  setIsTesting(false);
+                }}
+                style={{ padding: '0 24px' }}
+              >
+                {isTesting ? '⌛ SCANNING...' : 'TEST AI ENGINE'}
+              </button>
+            </div>
+
+            {testResult && (
+              <div style={{ padding: '24px', borderRadius: '20px', background: 'rgba(0,255,136,0.03)', border: '1px solid rgba(0,255,136,0.1)' }}>
+                <p style={{ fontSize: '12px', fontWeight: 800, color: 'var(--accent-primary)', marginBottom: '8px', textTransform: 'uppercase' }}>AI Response:</p>
+                <p style={{ fontSize: '15px', lineHeight: '1.6', color: '#fff' }}>{testResult}</p>
+                <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>
+                  <span style={{ color: '#00ff88' }}>●</span> Verified via Real-time Web Intelligence
+                </div>
               </div>
             )}
           </div>

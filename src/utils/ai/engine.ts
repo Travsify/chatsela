@@ -6,6 +6,24 @@ const WHAPI_BASE_URL = 'https://gate.whapi.cloud';
 const CHATSZELA_CORE_KEY = process.env.OPENAI_API_KEY;
 
 // ═══════════════════════════════════════════════════════
+// UI Visibility & Logging (The Live Board)
+// ═══════════════════════════════════════════════════════
+
+async function logBotActivity(supabase: any, userId: string, eventType: string, message: string, contactPhone?: string, metadata: any = {}) {
+  try {
+    await supabase.from('bot_activity').insert({
+      user_id: userId,
+      event_type: eventType,
+      message,
+      contact_phone: contactPhone,
+      metadata
+    });
+  } catch (e) {
+    console.error('⚠️ [Activity Log] Failed:', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 // External Integration Helpers
 // ═══════════════════════════════════════════════════════
 
@@ -48,9 +66,13 @@ async function fetchExternalTracking(supabase: any, userId: string, trackingId: 
   return null;
 }
 
-async function searchWebIntelligence(url: string): Promise<string | null> {
+export async function searchWebIntelligence(url: string, supabase?: any, userId?: string): Promise<string | null> {
   const API_KEY = process.env.FIRECRAWL_API_KEY || 'fc-f2fa4106f2eb47b4bd23b8e981eb97bc'; // Fallback for demo
   console.log(`🔍 [Firecrawl] Scraping URL: ${url}...`);
+
+  if (supabase && userId) {
+    await logBotActivity(supabase, userId, 'scrape', `🔎 Scanning website for intelligence: ${url}`);
+  }
 
   try {
     const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -71,7 +93,13 @@ async function searchWebIntelligence(url: string): Promise<string | null> {
     }
 
     const data = await resp.json();
-    return data.data?.markdown || null;
+    const result = data.data?.markdown || null;
+
+    if (supabase && userId && result) {
+      await logBotActivity(supabase, userId, 'scrape', `✅ Successfully extracted intelligence from ${url}`, undefined, { length: result.length });
+    }
+
+    return result;
   } catch (err: any) {
     console.error(`🔥 [Firecrawl] Critical Error:`, err.message);
     return null;
@@ -221,6 +249,9 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
 
   if (name === 'generate_checkout_link') {
     const link = await generateCheckoutLink(supabase, userId, args.amount, sender, channelId);
+    if (link) {
+      await logBotActivity(supabase, userId, 'tool_call', `💎 AGI Engine closing deal ($${args.amount}) with direct link.`, sender);
+    }
     result = link ? `SUCCESS: Generated link: ${link}` : `FAILURE: Could not generate link.`;
   } else if (name === 'book_appointment') {
     // Lead Capture logic: Record the intent even if link provided
@@ -264,7 +295,7 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
     result = `GAP_LOGGED: The question "${question}" has been escalated to the business owner.`;
   } else if (name === 'search_web_intelligence') {
     const { url } = args;
-    const content = await searchWebIntelligence(url);
+    const content = await searchWebIntelligence(url, supabase, userId);
     if (content) {
       // 🧠 Self-Healing: Store the new info back into the knowledge base (background)
       supabase.from('ai_knowledge_base').insert({

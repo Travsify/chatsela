@@ -402,7 +402,7 @@ export async function getDashboardStats() {
     .select('value_estimate, sentiment')
     .eq('user_id', user.id);
 
-  const { data: kbCount } = await supabase
+  const { count: kbCount } = await supabase
     .from('ai_knowledge_base')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id);
@@ -441,4 +441,59 @@ export async function disconnectWhatsApp() {
   await supabase.from('whatsapp_sessions').delete().eq('user_id', user.id);
   revalidatePath('/dashboard');
   return { success: true };
+}
+
+/**
+ * SYNC HANDSHAKE
+ * Verifies if the WhatsApp session is actually authenticated and re-registers the webhook.
+ */
+export async function syncHandshake() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const token = await getUserWhapiToken(user.id);
+  if (!token) return { error: 'No active session.' };
+
+  try {
+    const response = await fetch(`${WHAPI_BASE_URL}/users`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await response.json();
+
+    if (response.status === 200 && data.users?.some((u: any) => u.status === 'authenticated')) {
+      const activeUser = data.users.find((u: any) => u.status === 'authenticated');
+      await supabase.from('whatsapp_sessions').update({ 
+        status: 'connected',
+        phone_number: activeUser.id.replace(/\D/g, '')
+      }).eq('user_id', user.id);
+      
+      await registerWhapiWebhook(token);
+      return { authenticated: true, phone: activeUser.id };
+    }
+    
+    return { authenticated: false, reason: 'Device not authenticated in Whapi.' };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+}
+
+/**
+ * GET BOT ACTIVITY
+ * Fetches the latest system and interaction events for the Live Board.
+ */
+export async function getBotActivity() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data } = await supabase
+    .from('bot_activity')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  return data || [];
 }
