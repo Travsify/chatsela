@@ -514,7 +514,7 @@ export async function saveQuoteSettings(settings: { quote_mode: string; webhook_
 export async function testWebhookUrl(webhook_url: string, webhook_secret: string) {
   try {
     const payload = {
-      event: 'calculate_quote',
+      action: 'calculate_quote',
       data: {
         merchant_id: 'test_user_id_123',
         origin: 'New York, USA',

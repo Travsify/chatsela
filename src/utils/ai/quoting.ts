@@ -24,7 +24,7 @@ export async function resolveCustomQuote(
       console.log(`[Quote Engine] Calling external webhook for ${userId}: ${settings.webhook_url}`);
       
       const payload = {
-        event: 'calculate_quote',
+        action: 'calculate_quote',
         data: {
           merchant_id: userId,
           origin: params.origin,
