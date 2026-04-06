@@ -353,6 +353,12 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
     const aiResp = await executeChatSelaIntelligence(payload);
     const { categorizedFacts } = JSON.parse(aiResp.choices[0].message.content);
 
+    // 🏆 God-Mode Update: Synchronize the Prime URL with the user's profile
+    await supabase.from('profiles').update({ website_url: targetUrl }).eq('id', user.id);
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/bot');
+    revalidatePath('/dashboard/settings');
+
     return { success: true, categorizedFacts: categorizedFacts || {}, linksScraped: [targetUrl, ...targetLinks], targetUrl };
   } catch (err: any) {
     return { success: false, error: err.message };
