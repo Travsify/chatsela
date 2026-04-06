@@ -111,7 +111,8 @@ export default function ConnectStorePage() {
 
   const copySnippet = () => {
     if (!widgetSettings) return;
-    const code = `<script src="${window.location.origin}/widget.js?key=${widgetSettings.api_key}&icon=${widgetSettings.widget_icon_enabled}&phone=YOUR_WHATSAPP"></script>`;
+    const phone = widgetSettings.whatsapp_phone || 'YOUR_PHONE';
+    const code = `<script src="${window.location.origin}/widget.js?key=${widgetSettings.api_key}&icon=${widgetSettings.widget_icon_enabled}&phone=${phone}"></script>`;
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -220,7 +221,7 @@ export default function ConnectStorePage() {
               </button>
             </div>
             <div style={CODE_STYLE}>
-              {`<script src="${window.location.origin}/widget.js?key=${widgetSettings?.api_key || 'GENERATING...'}&icon=${widgetSettings?.widget_icon_enabled || 'false'}&phone=YOUR_WHATSAPP"></script>`}
+              {`<script src="${window.location.origin}/widget.js?key=${widgetSettings?.api_key || 'GENERATING...'}&icon=${widgetSettings?.widget_icon_enabled || 'false'}&phone=${widgetSettings?.whatsapp_phone || 'YOUR_PHONE'}"></script>`}
             </div>
           </div>
 

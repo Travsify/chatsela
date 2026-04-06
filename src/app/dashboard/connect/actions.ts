@@ -200,8 +200,20 @@ export async function getWidgetSettings() {
     data.api_key = newKey;
   }
 
+  const { data: whatsapp } = await supabase
+    .from('whatsapp_sessions')
+    .select('phone_number')
+    .eq('user_id', user.id)
+    .single();
+
   if (error) return { success: false, error: error.message };
-  return { success: true, settings: data };
+  return { 
+    success: true, 
+    settings: { 
+      ...data, 
+      whatsapp_phone: whatsapp?.phone_number || null 
+    } 
+  };
 }
 
 export async function saveWidgetSettings(enabled: boolean, websiteUrl?: string) {
