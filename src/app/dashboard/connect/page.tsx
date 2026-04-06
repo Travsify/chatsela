@@ -112,7 +112,8 @@ export default function ConnectStorePage() {
       if (settings.success) setWidgetSettings(settings.settings);
       alert(`✅ WhatsApp Handshake Synced! Connected: ${res.phone || 'Active'}`);
     } else {
-      alert(`🟠 Status: ${res.reason || res.error || 'Still waiting for connection.'}`);
+      const debugMsg = res.debug ? `\n\nRaw Diag: ${res.debug}` : '';
+      alert(`🟠 Status: ${res.reason || res.error || 'Still waiting for connection.'}${debugMsg}`);
     }
     setLoading(false);
   };

@@ -205,6 +205,8 @@ export async function getWidgetSettings() {
     .from('whatsapp_sessions')
     .select('phone_number, status')
     .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) return { success: false, error: error.message };

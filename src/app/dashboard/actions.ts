@@ -223,20 +223,19 @@ export async function getWhatsAppStatus() {
   if (!user) throw new Error('Unauthorized')
 
   const token = await getUserWhapiToken(user.id);
-  if (!token) return { authenticated: false, reason: 'No token found' };
+  if (!token) return { authenticated: false, reason: 'No active session found.' };
 
   try {
-    // 🔍 1. GOLDEN SIGNAL: Try login. If 409, we are ALREADY AUTHENTICATED.
+    // 🔍 1. Try login first (409 = Connected)
     const loginResp = await fetch(`${WHAPI_BASE_URL}/users/login`, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
-    // Status 409 means Conflict (Already Logged In)
     let isAuth = loginResp.status === 409;
     let data = await loginResp.json();
 
-    // 🔍 2. FALLBACK: Check health if login doesn't definitively tell us
+    // 🔍 2. Try Health fallback (Detailed detection)
     if (!isAuth) {
       const healthResp = await fetch(`${WHAPI_BASE_URL}/health`, {
         method: 'GET',
@@ -248,14 +247,15 @@ export async function getWhatsAppStatus() {
         healthData.status?.text === 'AUTH' ||
         healthData.authenticated === true || 
         healthData.status === 'AUTH' ||
-        healthResp.status === 409;
+        healthResp.status === 409 ||
+        !!(healthData.id || healthData.channel_id); // Presence of a JID/Channel ID
+      data = healthData;
     }
 
     if (isAuth) {
-      console.log(`✅ [Bulletproof Handshake] Connected. Performing Deep Sync...`);
       await registerWhapiWebhook(token);
 
-      // 📱 DEEP PROFILE SYNC: Extract phone number from profile
+      // 📱 Deep Profile Sync
       let phoneNumber = null;
       try {
         const profileResp = await fetch(`${WHAPI_BASE_URL}/users/full`, {
@@ -270,19 +270,20 @@ export async function getWhatsAppStatus() {
 
       await supabase
         .from('whatsapp_sessions')
-        .update({ 
-          status: 'connected', 
-          phone_number: phoneNumber || null,
-          updated_at: new Date().toISOString() 
-        })
+        .update({ status: 'connected', phone_number: phoneNumber || null })
         .eq('user_id', user.id)
+        .eq('whapi_token', token); // Safety: Only update the current one
       
       return { authenticated: true, phone: phoneNumber };
     }
 
-    return { authenticated: false, reason: 'Scan QR or Pairing Code on Dashboard first.' }
+    return { 
+      authenticated: false, 
+      reason: 'Scan QR Code on Dashboard', 
+      debug: JSON.stringify(data).substring(0, 500) 
+    };
   } catch (error: any) {
-    return { error: error.message || 'Failed to fetch status' }
+    return { error: error.message || 'Network Failure' };
   }
 }
 
