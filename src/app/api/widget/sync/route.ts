@@ -85,11 +85,11 @@ export async function POST(req: NextRequest) {
       last_sync_at: now
     }, { onConflict: 'user_id, platform' });
 
-    // 5. Successful Response with appropriate CORS headers
     return NextResponse.json({ success: true }, {
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       }
     });
   } catch (err: any) {

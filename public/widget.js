@@ -37,7 +37,6 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-        mode: 'no-cors' // Allow cross-origin push without complex preflights
       });
     } catch (e) {
       // Silent fail in production

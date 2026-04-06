@@ -243,16 +243,19 @@ export async function verifySnippetConnection() {
     .select('last_sync_at')
     .eq('user_id', user.id)
     .eq('platform', 'custom')
-    .single();
+    .maybeSingle();
 
   if (connector?.last_sync_at) {
     const lastSync = new Date(connector.last_sync_at);
     const now = new Date();
     const diff = now.getTime() - lastSync.getTime();
     
-    if (diff < 3600000) { // Verified if seen in last hour
+    // ✅ Verified if seen in last 24 hours
+    if (diff < 86400000) { 
       await supabase.from('profiles').update({ snippet_verified_at: now.toISOString() }).eq('id', user.id);
       return { success: true, last_seen: connector.last_sync_at };
+    } else {
+      return { success: false, error: `Connection detected, but it's older than 24 hours. Please refresh your website to re-sync.` };
     }
   }
 
