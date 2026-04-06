@@ -7,7 +7,8 @@ import {
   getWidgetSettings,
   saveWidgetSettings,
   verifySnippetConnection,
-  getSyncHistory
+  getSyncHistory,
+  syncHandshake
 } from './actions';
 
 const PLATFORMS = [
@@ -101,6 +102,19 @@ export default function ConnectStorePage() {
     const next = !widgetSettings.widget_icon_enabled;
     setWidgetSettings({ ...widgetSettings, widget_icon_enabled: next });
     await saveWidgetSettings(next);
+  };
+  const handleSyncHandshake = async () => {
+    setLoading(true);
+    const res = await syncHandshake();
+    if (res.authenticated) {
+      // Re-fetch everything to update the UI
+      const settings = await getWidgetSettings();
+      if (settings.success) setWidgetSettings(settings.settings);
+      alert('✅ WhatsApp Handshake Synced! Your status is now ACTIVE.');
+    } else {
+      alert('🟠 Status check finished. Still waiting for WhatsApp connection.');
+    }
+    setLoading(false);
   };
 
   const handleVerifySnippet = async () => {
@@ -232,6 +246,15 @@ export default function ConnectStorePage() {
             </div>
           )}
 
+          {widgetSettings?.whatsapp_status === 'pending' && (
+            <div style={{ padding: '12px 16px', background: 'rgba(255,165,0,0.1)', border: '1px solid rgba(255,165,0,0.2)', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '18px' }}>🕒</span>
+              <p style={{ fontSize: '13px', color: '#ffa500' }}>
+                <b>WhatsApp Connection Finalizing.</b> If you've already scanned the QR code, click <button onClick={handleSyncHandshake} style={{ background: 'none', border: 'none', color: '#fff', textDecoration: 'underline', padding: 0, cursor: 'pointer', fontWeight: 700 }}>🔄 Sync Status</button> to refresh.
+              </p>
+            </div>
+          )}
+
           <div style={{ background: 'rgba(255,255,255,0.02)', padding: '24px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <span style={{ fontSize: '12px', fontWeight: 700, color: '#25D366' }}>WIDGET CODE (v2)</span>
@@ -247,11 +270,11 @@ export default function ConnectStorePage() {
             </div>
           </div>
 
-          {widgetSettings?.whatsapp_status !== 'connected' && !manualPhone && (
+          {widgetSettings?.whatsapp_status === 'disconnected' && !manualPhone && (
             <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '18px' }}>⚠️</span>
               <p style={{ fontSize: '13px', color: '#ff6b6b' }}>
-                <b>No WhatsApp connected.</b> Please enter your number below or <a href="/dashboard" style={{ color: '#fff', textDecoration: 'underline' }}>link your device</a>.
+                <b>No WhatsApp connected.</b> Please <a href="/dashboard" style={{ color: '#fff', textDecoration: 'underline' }}>link your device</a> or <button onClick={handleSyncHandshake} style={{ background: 'none', border: 'none', color: '#fff', textDecoration: 'underline', padding: 0, cursor: 'pointer', fontWeight: 700 }}>🔄 Sync Existing</button>.
               </p>
             </div>
           )}

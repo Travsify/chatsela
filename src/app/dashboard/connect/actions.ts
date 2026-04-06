@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
+import { getWhatsAppStatus } from '@/app/dashboard/actions';
 import { revalidatePath } from 'next/cache';
 
 // ── Shopify API Logic ───────────────────────────────────────────────────────
@@ -295,4 +296,9 @@ export async function getSyncHistory() {
 
   if (err1 || err2) return { success: false, error: (err1 || err2)?.message };
   return { success: true, pages, facts };
+}
+
+export async function syncHandshake() {
+  const res = await getWhatsAppStatus();
+  return res;
 }
