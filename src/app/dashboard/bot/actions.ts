@@ -650,9 +650,11 @@ export async function testIntelligence(query: string) {
 
   try {
     const { searchWebIntelligence } = await import('@/utils/ai/engine');
-    const content = await searchWebIntelligence(profile.website_url);
+    // Ensure URL is clean
+    const targetUrl = profile.website_url.startsWith('http') ? profile.website_url : `https://${profile.website_url}`;
+    const content = await searchWebIntelligence(targetUrl);
     
-    if (!content) return { answer: '❌ Could not extract data from your website. Ensure it is public.' };
+    if (!content) return { answer: `❌ [Extracted Null] Firecrawl could not pull data from ${targetUrl}. Ensure the site is reachable and public.` };
 
     // Use OpenAI to generate a "Sales Guru" response based on the scrape
     const fetch = require('node-fetch'); // Fallback if regular fetch is tricky in some environments

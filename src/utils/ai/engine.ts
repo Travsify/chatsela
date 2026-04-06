@@ -68,10 +68,11 @@ async function fetchExternalTracking(supabase: any, userId: string, trackingId: 
 
 export async function searchWebIntelligence(url: string, supabase?: any, userId?: string): Promise<string | null> {
   const API_KEY = process.env.FIRECRAWL_API_KEY || 'fc-f2fa4106f2eb47b4bd23b8e981eb97bc'; // Fallback for demo
-  console.log(`🔍 [Firecrawl] Scraping URL: ${url}...`);
+  const targetUrl = url.startsWith('http') ? url : `https://${url}`;
+  console.log(`🔍 [Firecrawl] Scraping URL: ${targetUrl}...`);
 
   if (supabase && userId) {
-    await logBotActivity(supabase, userId, 'scrape', `🔎 Scanning website for intelligence: ${url}`);
+    await logBotActivity(supabase, userId, 'scrape', `🔎 Scanning website for intelligence: ${targetUrl}`);
   }
 
   try {
@@ -82,13 +83,14 @@ export async function searchWebIntelligence(url: string, supabase?: any, userId?
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        url: url,
+        url: targetUrl,
         formats: ['markdown']
       })
     });
 
     if (!resp.ok) {
-      console.error(`❌ [Firecrawl] Error ${resp.status}: ${await resp.text()}`);
+      const errorText = await resp.text();
+      console.error(`❌ [Firecrawl] Error ${resp.status}: ${errorText}`);
       return null;
     }
 
