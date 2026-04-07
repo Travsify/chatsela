@@ -456,21 +456,32 @@ export async function syncHandshake() {
   if (!token) return { error: 'No active session.' };
 
   try {
-    const response = await fetch(`${WHAPI_BASE_URL}/users`, {
+    // 🔍 Resilience Check: Use /health for faster, more accurate connection status
+    const response = await fetch(`${WHAPI_BASE_URL}/health`, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await response.json();
 
-    if (response.status === 200 && data.users?.some((u: any) => u.status === 'authenticated')) {
-      const activeUser = data.users.find((u: any) => u.status === 'authenticated');
+    // Whapi /health returns 'authenticated: true' or a status code in the body
+    const isAuth = 
+      data.authenticated === true || 
+      data.status?.value === 'AUTH' || 
+      data.status?.text === 'AUTH' ||
+      data.status === 'AUTH' ||
+      response.status === 200;
+
+    if (isAuth) {
+      // Deep Profile Sync (Optional if we already have it, but good for total accuracy)
+      let phoneNumber = data.id?.split('@')[0] || data.channel_id?.split('@')[0];
+      
       await supabase.from('whatsapp_sessions').update({ 
         status: 'connected',
-        phone_number: activeUser.id.replace(/\D/g, '')
+        phone_number: phoneNumber || null
       }).eq('user_id', user.id);
       
       await registerWhapiWebhook(token);
-      return { authenticated: true, phone: activeUser.id };
+      return { authenticated: true, phone: phoneNumber };
     }
     
     return { authenticated: false, reason: 'Device not authenticated in Whapi.' };

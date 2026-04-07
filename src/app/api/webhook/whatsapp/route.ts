@@ -61,12 +61,19 @@ export async function POST(req: NextRequest) {
       }
 
       const sender = msg.from;
+      
+      // 📝 DEEP PARSING: Handle Interactive Messages (List Replies, Button Replies)
       let text = msg.text?.body || msg.body;
+      if (!text && msg.list_reply) text = msg.list_reply.title || msg.list_reply.description;
+      if (!text && msg.button_reply) text = msg.button_reply.title || msg.button_reply.id;
+      if (!text && msg.interactive?.list_reply) text = msg.interactive.list_reply.title;
+      if (!text && msg.interactive?.button_reply) text = msg.interactive.button_reply.title;
+
       const media = msg.image || msg.document || msg.video || msg.audio;
       const mediaType = msg.type;
 
       if (!text && !media) {
-        console.log('📡 [Whapi Webhook] Skipping message with no text body.');
+        console.log('📡 [Whapi Webhook] Skipping message with no text body or known interactive response.');
         continue;
       }
 
