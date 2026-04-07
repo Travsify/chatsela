@@ -102,3 +102,131 @@ export async function resolveCustomQuote(
     return 'I encountered an error while trying to calculate your quote. Please try again in a moment or wait for a team member.';
   }
 }
+
+export async function resolveShipmentTracking(
+  supabase: any,
+  userId: string,
+  trackingId: string
+): Promise<string> {
+  try {
+    const { data: settings } = await supabase
+      .from('quote_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (!settings?.webhook_url) {
+      return `We are currently unable to track shipments automatically. Please wait for an agent to manually check the status of tracking ID: ${trackingId}.`;
+    }
+
+    console.log(`[Tracking Engine] Calling external webhook for ${userId} with tracking ID: ${trackingId}`);
+    
+    // We match the standard payload format the user implemented earlier but with 'track_shipment'
+    const payload = {
+      action: 'track_shipment',
+      tracking_id: trackingId
+    };
+
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (settings.webhook_secret) {
+      headers['x-chatsela-signature'] = settings.webhook_secret;
+    }
+
+    const resp = await fetch(settings.webhook_url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!resp.ok) {
+      return `I tried to track your shipment (${trackingId}), but our logistics server is temporarily unavailable. Let me connect you to a human agent.`;
+    }
+
+    const result = await resp.json();
+
+    if (result.success && result.tracking) {
+      const t = result.tracking;
+      return `📍 **Live Shipment Tracking Update** 💎\n\n- **Tracking ID:** ${trackingId}\n- **Status:** ${t.status || 'In Transit'}\n- **Current Location:** ${t.current_location || 'Unknown'}\n- **Estimated Delivery:** ${t.estimated_delivery || 'Pending'}\n\n${t.details || 'Your shipment is moving along nicely. Can I assist you with anything else today?'} 🚀`;
+    } else {
+      return result.message || `I couldn't find any recent tracking updates for the ID **${trackingId}**. Please double-check the number or let me get an agent to investigate further.`;
+    }
+
+  } catch (err: any) {
+    console.error('[Tracking Engine] Critical Failure:', err.message);
+    return 'I encountered a system error while trying to track your shipment. Our team will look into this shortly.';
+  }
+}
+
+export async function resolveShipmentBooking(
+  supabase: any,
+  userId: string,
+  params: {
+    receiver_name: string;
+    receiver_phone: string;
+    receiver_address: string;
+    origin: string;
+    destination: string;
+    weight_kg: number;
+    service_type: string;
+    dimensions: { length: number; width: number; height: number };
+  }
+): Promise<string> {
+  try {
+    const { data: settings } = await supabase
+      .from('quote_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (!settings?.webhook_url) {
+      return 'I cannot process your booking automatically right now. Let me pass your details to our team to finalize the order for you manually.';
+    }
+
+    console.log(`[Booking Engine] Calling external webhook for ${userId} to create shipment...`);
+
+    const payload = {
+      action: 'create_shipment',
+      receiver: {
+        name: params.receiver_name,
+        phone: params.receiver_phone,
+        address: params.receiver_address
+      },
+      shipment: {
+        origin: params.origin,
+        destination: params.destination,
+        weight: params.weight_kg,
+        service_type: params.service_type || 'air',
+        dimensions: params.dimensions
+      }
+    };
+
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (settings.webhook_secret) {
+      headers['x-chatsela-signature'] = settings.webhook_secret;
+    }
+
+    const resp = await fetch(settings.webhook_url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!resp.ok) {
+      return 'The booking was sent successfully, but I encountered an error while generating your Waybill. Our logistics team will send it to you shortly! ✅';
+    }
+
+    const result = await resp.json();
+
+    if (result.success && result.tracking_id) {
+       return `🎊 **Shipment Confirmed!** 🎊\n\nYour order has been successfully booked with GlobalLine Logistics.\n\n- **Tracking ID:** ${result.tracking_id}\n- **Waybill PDF:** [Download Here](${result.waybill_url || '#'})\n- **Status:** Order Received\n\nYou can track your package anytime by asking me for a status update. Thank you for choosing ChatSela God-Mode! 🚀📦💎`;
+    } else {
+       return result.message || 'I successfully captured your booking details, but the system is waiting for manual confirmation. Our team will reach out to you within an hour!';
+    }
+
+  } catch (err: any) {
+    console.error('[Booking Engine] Critical Failure:', err.message);
+    return 'I encountered a system error while processing your booking. Don\'t worry—your information is safe, and an agent will follow up with your Waybill shortly.';
+  }
+}

@@ -19,6 +19,7 @@ import {
 } from './actions';
 import VoiceTraining from '@/components/VoiceTraining';
 import PricingLedger from './PricingLedger';
+import WhatsAppConnector from '@/components/WhatsAppConnector';
 
 const INPUT_STYLE: React.CSSProperties = {
   padding: '12px 16px',
@@ -56,13 +57,20 @@ export default function IntelligenceHubPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [magicInput, setMagicInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'identity' | 'knowledge' | 'training' | 'lab'>('identity');
+  const [activeTab, setActiveTab] = useState<'identity' | 'knowledge' | 'training' | 'lab' | 'whatsapp'>('identity');
   const [testQuery, setTestQuery] = useState('');
   const [testResult, setTestResult] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     (async () => {
+      // Check query param for tab
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab');
+      if (tabParam === 'whatsapp') {
+        setActiveTab('whatsapp');
+      }
+
       const bot = await getBotSettings();
       if (bot.success && bot.bot) {
         setBotName(bot.bot.name || '');
@@ -132,7 +140,7 @@ export default function IntelligenceHubPage() {
 
       {/* ── TAB NAVIGATION ── */}
       <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '16px', alignSelf: 'flex-start' }}>
-        {(['identity', 'knowledge', 'training', 'lab'] as const).map(tab => (
+        {(['whatsapp', 'identity', 'knowledge', 'training', 'lab'] as const).map(tab => (
           <button 
             key={tab} 
             onClick={() => setActiveTab(tab)}
@@ -148,10 +156,16 @@ export default function IntelligenceHubPage() {
               transition: 'all 0.2s'
             }}
           >
-            {tab === 'lab' ? '🧪 LAB' : tab.toUpperCase()}
+            {tab === 'lab' ? '🧪 LAB' : tab === 'whatsapp' ? '📱 WHATSAPP' : tab.toUpperCase()}
           </button>
         ))}
       </div>
+
+      {activeTab === 'whatsapp' && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <WhatsAppConnector />
+        </section>
+      )}
 
       {activeTab === 'identity' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>

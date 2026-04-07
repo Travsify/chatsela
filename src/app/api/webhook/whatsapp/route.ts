@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { handleAIResponse } from '@/utils/ai/engine';
+import { handleAIResponse, handleMediaAIResponse } from '@/utils/ai/engine';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseAdmin = createClient(
@@ -61,8 +61,11 @@ export async function POST(req: NextRequest) {
       }
 
       const sender = msg.from;
-      const text = msg.text?.body || msg.body;
-      if (!text) {
+      let text = msg.text?.body || msg.body;
+      const media = msg.image || msg.document || msg.video || msg.audio;
+      const mediaType = msg.type;
+
+      if (!text && !media) {
         console.log('📡 [Whapi Webhook] Skipping message with no text body.');
         continue;
       }
@@ -115,7 +118,14 @@ export async function POST(req: NextRequest) {
       if (botEnabled) {
         // 6. Trigger AI Logic (Using the user's specific token)
         console.log(`🧠 [Whapi Webhook] Calling AI Response Handler (Autonomous: ${isAutonomous})...`);
-        const aiResponse = await handleAIResponse(sender, text, bot.id);
+        
+        let aiResponse = '';
+        if (media && (mediaType === 'image' || mediaType === 'document')) {
+          const mediaUrl = media.link || media.url;
+          aiResponse = await handleMediaAIResponse(sender, mediaUrl, mediaType, bot.id);
+        } else if (text) {
+          aiResponse = (await handleAIResponse(sender, text, bot.id)) || '';
+        }
         
         // 6. Log Bot's outgoing message
         if (aiResponse) {

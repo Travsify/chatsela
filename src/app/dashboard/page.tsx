@@ -145,7 +145,7 @@ export default function Dashboard() {
                 <button onClick={handleDisconnect} style={{ background: 'none', border: 'none', color: '#ff4444', textDecoration: 'underline', cursor: 'pointer', fontSize: '11px' }}>(Disconnect)</button>
               </div>
             ) : (
-              <Link href="/dashboard/bot" style={{ color: '#ff4444', textDecoration: 'underline', fontSize: '11px' }}>(Connect Now)</Link>
+              <Link href="/dashboard/bot?tab=whatsapp" style={{ color: '#ff4444', textDecoration: 'underline', fontSize: '11px' }}>(Connect Now)</Link>
             )}
           </div>
           <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)' }} />

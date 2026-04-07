@@ -148,7 +148,7 @@ export async function searchWebIntelligence(url: string, supabase?: any, userId?
   }
 }
 
-async function generateCheckoutLink(supabase: any, userId: string, amount: number, customerPhone: string, channelId: string): Promise<string | null> {
+async function generateCheckoutLink(supabase: any, userId: string, amount: number, customerPhone: string, channelId: string, metadata: any = {}): Promise<string | null> {
   const { data: profile } = await supabase
     .from('profiles')
     .select('paystack_secret_enc, stripe_secret_enc, payment_currency')
@@ -172,6 +172,7 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
           email: `customer_${customerPhone}@chatsela.com`,
           amount: Math.round(amount * 100),
           currency: 'NGN',
+          metadata: metadata
         }),
       });
 
@@ -184,12 +185,17 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
       const sessionBody = new URLSearchParams();
       sessionBody.append('payment_method_types[]', 'card');
       sessionBody.append('line_items[0][price_data][currency]', profile.payment_currency || 'usd');
-      sessionBody.append('line_items[0][price_data][product_data][name]', 'WhatsApp Order');
+      sessionBody.append('line_items[0][price_data][product_data][name]', metadata.product_name || 'GlobalLine Logistics Order');
       sessionBody.append('line_items[0][price_data][unit_amount]', Math.round(amount * 100).toString());
       sessionBody.append('line_items[0][quantity]', '1');
       sessionBody.append('mode', 'payment');
       sessionBody.append('success_url', `${process.env.NEXT_PUBLIC_SITE_URL}/success`);
       sessionBody.append('cancel_url', `${process.env.NEXT_PUBLIC_SITE_URL}/canceled`);
+      
+      // Add metadata correctly for Stripe session metadata
+      Object.keys(metadata).forEach((key, index) => {
+        sessionBody.append(`metadata[${key}]`, metadata[key]);
+      });
 
       const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
         method: 'POST',
@@ -208,6 +214,67 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
     return null;
   }
   return null;
+}
+
+export async function handleMediaAIResponse(sender: string, mediaUrl: string, mediaType: string, botId: string): Promise<string> {
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const { data: bot } = await supabase.from('bots').select('*').eq('id', botId).single();
+  if (!bot) return 'I encountered an error finding your bot configuration.';
+  const userId = bot.user_id;
+
+  const { data: settings } = await supabase.from('quote_settings').select('*').eq('user_id', userId).single();
+
+  await logBotActivity(supabase, userId, 'media_received', `📸 Received ${mediaType} from ${sender}. Processing with Vision OCR...`, sender);
+
+  try {
+    // 🧠 Vision OCR Strategy: Process with GPT-4o
+    const payload = {
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `You are the GlobalLine Logistics Document Specialist. Your goal is to extract structured data from shipping documents (Commercial Invoices, Packing Lists).
+          Extract: 1. Total Invoice Value, 2. Currency, 3. List of Items, 4. Consignee Name, 5. Country of Origin.
+          Respond ONLY in raw JSON format: { "total_value": 0, "currency": "USD", "items": ["item1"], "consignee": "name", "origin": "country", "summary": "..." }`
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Analyze this logistics document and extract the key details.' },
+            { type: 'image_url', image_url: { url: mediaUrl } }
+          ]
+        }
+      ],
+      response_format: { type: "json_object" }
+    };
+
+    const response = await executeChatSelaIntelligence(payload);
+    const result = JSON.parse(response.choices[0].message.content);
+
+    // 🚀 Update GlobalLine Webhook
+    if (settings?.webhook_url) {
+      fetch(settings.webhook_url, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-chatsela-signature': settings.webhook_secret || ''
+        },
+        body: JSON.stringify({
+          action: 'attach_document',
+          sender: sender,
+          ocr_data: result,
+          media_url: mediaUrl
+        })
+      }).then(() => console.log('✅ [Vision] OCR data pushed to logistics webhook.'));
+    }
+
+    const finalMsg = `📝 **Document Processed Successfully!**\n\nI've analyzed your ${mediaType} and extracted the following details:\n- **Items:** ${result.items.join(', ')}\n- **Total Value:** ${result.currency} ${result.total_value}\n- **Origin:** ${result.origin}\n\nI have attached this to your shipment record. Is there anything else you need? 💎🚀`;
+    return finalMsg;
+
+  } catch (err: any) {
+    console.error('🔥 [Vision OCR] Failed:', err.message);
+    return 'I received your document, but I had trouble reading the details automatically. Don\'t worry—I\'ve flagged this for our team to review manually! ✅';
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -261,7 +328,7 @@ export async function executeChatSelaEmbedding(text: string) {
 // Semantic RAG Search (pgvector)
 // ═══════════════════════════════════════════════════════
 
-import { resolveCustomQuote } from './quoting';
+import { resolveCustomQuote, resolveShipmentTracking, resolveShipmentBooking } from './quoting';
 
 async function semanticRAGSearch(supabase: any, userId: string, query: string): Promise<string> {
   try {
@@ -305,11 +372,32 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
     });
     await logBotActivity(supabase, userId, 'tool_call', `📦 AI requested custom quote from ${args.origin_city_or_country} to ${args.destination_city_or_country} (${args.weight_kg}kg, ${args.service_type})`, sender);
   } else if (name === 'generate_checkout_link') {
-    const link = await generateCheckoutLink(supabase, userId, args.amount, sender, channelId);
+    const link = await generateCheckoutLink(supabase, userId, args.amount, sender, channelId, {
+      product_name: args.product_name,
+      origin: args.origin,
+      destination: args.destination,
+      weight_kg: args.weight_kg,
+      service_type: args.service_type
+    });
     if (link) {
       await logBotActivity(supabase, userId, 'tool_call', `💎 AGI Engine closing deal ($${args.amount}) with direct link.`, sender);
     }
     result = link ? `SUCCESS: Generated link: ${link}` : `FAILURE: Could not generate link.`;
+  } else if (name === 'track_shipment') {
+    result = await resolveShipmentTracking(supabase, userId, args.tracking_id);
+    await logBotActivity(supabase, userId, 'tool_call', `📍 AI requested live shipment tracking for ID: ${args.tracking_id}`, sender);
+  } else if (name === 'create_shipment_order') {
+    result = await resolveShipmentBooking(supabase, userId, {
+      receiver_name: args.receiver_name,
+      receiver_phone: args.receiver_phone,
+      receiver_address: args.receiver_address,
+      origin: args.origin,
+      destination: args.destination,
+      weight_kg: Number(args.weight_kg),
+      service_type: args.service_type,
+      dimensions: args.dimensions
+    });
+    await logBotActivity(supabase, userId, 'tool_call', `🧾 AI generated shipment order for ${args.receiver_name}`, sender);
   } else if (name === 'book_appointment') {
     // Lead Capture logic: Record the intent even if link provided
     const bookingTime = args.time || 'requested';
@@ -526,8 +614,12 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         parameters: {
           type: 'object',
           properties: {
-            product_name: { type: 'string', description: 'Name of the product' },
-            amount: { type: 'number', description: 'Price amount' }
+            product_name: { type: 'string', description: 'Descriptive name of the shipment (e.g. "Air Freight: Lagos to London")' },
+            amount: { type: 'number', description: 'Price amount provided in the quote' },
+            origin: { type: 'string' },
+            destination: { type: 'string' },
+            weight_kg: { type: 'number' },
+            service_type: { type: 'string' }
           },
           required: ['product_name', 'amount']
         }
@@ -560,6 +652,48 @@ export async function handleAIResponse(sender: string, message: string, botId: s
             tracking_id: { type: 'string', description: 'Tracking or Order ID' }
           },
           required: ['tracking_id']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'track_shipment',
+        description: 'Retrieves live tracking status and ETA from the logistics provider for a specific Tracking ID.',
+        parameters: {
+          type: 'object',
+          properties: {
+            tracking_id: { type: 'string', description: 'The unique tracking number provided to the customer.' }
+          },
+          required: ['tracking_id']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'create_shipment_order',
+        description: 'Creates a formal logistics booking and generates a Waybill PDF. Call this only AFTER the customer has accepted the quote AND provided receiver details.',
+        parameters: {
+          type: 'object',
+          properties: {
+            receiver_name: { type: 'string', description: 'Full name of the person receiving the package' },
+            receiver_phone: { type: 'string', description: 'Phone number of the receiver' },
+            receiver_address: { type: 'string', description: 'Full delivery address' },
+            origin: { type: 'string' },
+            destination: { type: 'string' },
+            weight_kg: { type: 'number' },
+            service_type: { type: 'string' },
+            dimensions: {
+              type: 'object',
+              properties: {
+                length: { type: 'number' },
+                width: { type: 'number' },
+                height: { type: 'number' }
+              }
+            }
+          },
+          required: ['receiver_name', 'receiver_phone', 'receiver_address', 'origin', 'destination', 'weight_kg', 'service_type', 'dimensions']
         }
       }
     },
