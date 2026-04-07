@@ -52,8 +52,13 @@ export async function resolveCustomQuote(
 
       const result = await resp.json();
       
-      // We expect the webhook to return { success: true, price: number, currency: "USD", message: "Optional context" }
-      if (result.success && result.price !== undefined) {
+      // Parse the nested API response specifically for Globalline structure
+      if (result.success && result.quote) {
+         const q = result.quote;
+         const finalString = `💎 **Custom Quote Ready:**\n\n- **Route:** ${params.origin} -> ${params.destination}\n- **Service:** ${q.service || 'Standard'}\n- **Chargeable Weight:** ${q.chargeable_weight_kg}kg\n- **Transit:** ${q.estimated_days} days\n- **Total Cost:** USD ${q.price_usd} ${q.vat_included ? '(VAT Included)' : ''}\n\nWould you like me to book this shipment for you now?`;
+         return finalString;
+      } else if (result.success && result.price !== undefined) {
+         // Fallback for generic structure
          const finalString = `💎 **Custom Quote Ready:**\n\n- **Route:** ${params.origin} -> ${params.destination}\n- **Weight:** ${params.weight_kg}kg\n- **Total Cost:** ${result.currency || 'USD'} ${result.price}\n\n${result.message || 'Would you like to book this shipment now?'}`;
          return finalString;
       } else {
