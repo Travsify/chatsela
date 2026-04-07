@@ -483,12 +483,12 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
     const target = profile?.target_currency || 'NGN';
     const base = profile?.base_currency || 'USD';
     const converted = amount_usd * rate;
-    result = `VERIFIED CONVERSION: ${base} ${amount_usd} is exactly ${target} ${converted.toLocaleString()} (Rate: ${rate}). Inform the customer that this is the final converted amount.`;
+    result = `VERIFIED CONVERSION: ✅ [VERIFIED PRICE] ${base} ${amount_usd} is exactly ${target} ${converted.toLocaleString()} (Rate: ${rate}). Inform the customer that this is the final converted amount.`;
   } else if (name === 'lookup_verified_product_price') {
     const { product_name } = args;
     const { data: product } = await supabase.from('products').select('*').eq('user_id', userId).ilike('name', `%${product_name}%`).limit(1).single();
     if (product) {
-      result = `VERIFIED PRICE: The ${product.name} costs exactly ${product.currency} ${product.price}. Inform the customer using these exact figures.`;
+      result = `VERIFIED PRICE: ✅ [VERIFIED PRICE] The ${product.name} costs exactly ${product.currency} ${product.price}. Inform the customer using these exact figures.`;
     } else {
       result = `FAILURE: Product "${product_name}" not found in our verified catalog. Escalate to an agent.`;
     }
@@ -620,19 +620,9 @@ export async function handleAIResponse(sender: string, message: string, botId: s
             origin_city_or_country: { type: 'string', description: 'Pickup location (City, State, or Country)' },
             destination_city_or_country: { type: 'string', description: 'Dropoff location (City, State, or Country)' },
             weight_kg: { type: 'number', description: 'Total weight of the shipment in KG. If user gives LBS, convert to KG.' },
-            service_type: { type: 'string', description: 'The type of service: e.g. "air", "ocean", or "road".' },
-            dimensions: {
-              type: 'object',
-              description: 'The physical dimensions of the package in CM',
-              properties: {
-                length: { type: 'number' },
-                width: { type: 'number' },
-                height: { type: 'number' }
-              },
-              required: ['length', 'width', 'height']
-            }
+            service_type: { type: 'string', description: 'The type of service: e.g. "air", "ocean", or "road".' }
           },
-          required: ['origin_city_or_country', 'destination_city_or_country', 'weight_kg', 'service_type', 'dimensions']
+          required: ['origin_city_or_country', 'destination_city_or_country', 'weight_kg', 'service_type']
         }
       }
     },

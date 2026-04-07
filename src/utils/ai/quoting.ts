@@ -55,14 +55,14 @@ export async function resolveCustomQuote(
       // Parse the nested API response specifically for Globalline structure
       if (result.success && result.quote) {
          const q = result.quote;
-         const finalString = `💎 **Custom Quote Ready:**\n\n- **Route:** ${params.origin} -> ${params.destination}\n- **Service:** ${q.service || 'Standard'}\n- **Chargeable Weight:** ${q.chargeable_weight_kg}kg\n- **Transit:** ${q.estimated_days} days\n- **Total Cost:** USD ${q.price_usd} ${q.vat_included ? '(VAT Included)' : ''}\n\nWould you like me to book this shipment for you now?`;
+         const finalString = `💎 **Custom Quote Ready:** ✅ [VERIFIED PRICE]\n\n- **Route:** ${params.origin} -> ${params.destination}\n- **Service:** ${q.service || 'Standard'}\n- **Chargeable Weight:** ${q.chargeable_weight_kg}kg\n- **Transit:** ${q.estimated_days} days\n- **Total Cost:** USD ${q.price_usd} ${q.vat_included ? '(VAT Included)' : ''}\n\nWould you like me to book this shipment for you now?`;
          return finalString;
       } else if (result.success && result.price !== undefined) {
          // Fallback for generic structure
-         const finalString = `💎 **Custom Quote Ready:**\n\n- **Route:** ${params.origin} -> ${params.destination}\n- **Weight:** ${params.weight_kg}kg\n- **Total Cost:** ${result.currency || 'USD'} ${result.price}\n\n${result.message || 'Would you like to book this shipment now?'}`;
+         const finalString = `💎 **Custom Quote Ready:** ✅ [VERIFIED PRICE]\n\n- **Route:** ${params.origin} -> ${params.destination}\n- **Weight:** ${params.weight_kg}kg\n- **Total Cost:** ${result.currency || 'USD'} ${result.price}\n\n${result.message || 'Would you like to book this shipment now?'}`;
          return finalString;
       } else {
-         return result.message || 'I could not generate a formal quote for this route right now. Let me know if you would like me to escalate this.';
+         return result.message || 'I could not generate a verified quote for this route right now. Let me know if you would like me to escalate this.';
       }
 
     } else {
@@ -94,9 +94,9 @@ export async function resolveCustomQuote(
 
         const timeStr = bestMatch.delivery_time_estimate ? `\n- **Est. Transit Time:** ${bestMatch.delivery_time_estimate}` : '';
         
-        return `💎 **Custom Quote Ready:**\n\n- **Route:** ${bestMatch.origin_zone} -> ${bestMatch.destination_zone}\n- **Weight:** ${params.weight_kg}kg\n- **Total Cost (USD):** USD ${totalBase.toFixed(2)}\n- **Total Cost (${targetCurrency}):** ${targetCurrency} ${totalTarget.toLocaleString()} (Rate: ${rate})${timeStr}\n\nWould you like me to generate a secure checkout link to lock in this rate?`;
+        return `💎 **Custom Quote Ready:** ✅ [VERIFIED PRICE]\n\n- **Route:** ${bestMatch.origin_zone} -> ${bestMatch.destination_zone}\n- **Weight:** ${params.weight_kg}kg\n- **Total Cost (USD):** USD ${totalBase.toFixed(2)}\n- **Total Cost (${targetCurrency}):** ${targetCurrency} ${totalTarget.toLocaleString()} (Rate: ${rate})${timeStr}\n\nWould you like me to generate a secure checkout link to lock in this rate?`;
       } else {
-        return `Unfortunately, I couldn't find an automatic shipping rate for the route from **${params.origin}** to **${params.destination}**. Would you like me to schedule a callback with our logistics team to get you a custom price?`;
+        return `Unfortunately, I couldn't find a verified shipping rate for the route from **${params.origin}** to **${params.destination}**. Would you like me to schedule a callback with our logistics team to get you a custom price?`;
       }
     }
 
