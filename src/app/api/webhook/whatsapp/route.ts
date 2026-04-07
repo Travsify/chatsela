@@ -72,16 +72,22 @@ export async function POST(req: NextRequest) {
 
       console.log(`🚀 [Whapi Webhook] Routing Message from ${sender}: "${text}"`);
 
-      // 2. Find the bot for THIS user
+      // 2. Find the ACTIVE / LATEST bot for THIS user
       const { data: bot, error: botErr } = await supabaseAdmin
         .from('bots')
         .select('id')
         .eq('user_id', userId)
+        .order('created_at', { ascending: false })
         .limit(1)
         .single();
 
       if (botErr || !bot) {
-        console.log(`❌ [Whapi Webhook] No bot configured for user ${userId}. BotError: ${botErr?.message}`);
+        console.log(`❌ [Whapi Webhook] No active bot found for user ${userId}. Recording as gap.`);
+        await supabaseAdmin.from('knowledge_gaps').insert({
+          user_id: userId,
+          question: `SYSTEM: Bot missing configuration for incoming message from ${sender}`,
+          status: 'pending'
+        });
         continue;
       }
 
@@ -112,12 +118,12 @@ export async function POST(req: NextRequest) {
         .eq('contact_phone', sender)
         .single();
 
-      // Bot is enabled if explicitly bot_enabled is true, OR if we are in Strict Autonomous Mode
+      // ⏸️ Universal Coverage: Bot remains active unless explicitly taken over AND autonomous mode is OFF
       const botEnabled = isAutonomous ? true : (handoff ? handoff.bot_enabled : true);
 
       if (botEnabled) {
         // 6. Trigger AI Logic (Using the user's specific token)
-        console.log(`🧠 [Whapi Webhook] Calling AI Response Handler (Autonomous: ${isAutonomous})...`);
+        console.log(`🧠 [Whapi Webhook] Calling AI Response Handler (Autonomous: ${isAutonomous}, Contact: ${sender})...`);
         
         let aiResponse = '';
         if (media && (mediaType === 'image' || mediaType === 'document')) {
@@ -140,7 +146,15 @@ export async function POST(req: NextRequest) {
           console.log('⚠️ [Whapi Webhook] AI Engine returned empty response.');
         }
       } else {
-        console.log(`⏸️ [Whapi Webhook] Bot disabled for contact ${sender} (Human Handoff active).`);
+        console.log(`⏸️ [Whapi Webhook] Bot disabled for contact ${sender}. (Human-in-the-loop Active).`);
+        // Self-Healing: Log this so the user can see it in the dashboard as a handoff event
+        await supabaseAdmin.from('messages').insert({
+          user_id: userId,
+          sender: sender,
+          body: `[SYSTEM: Bot paused for human taking over chat with ${sender}]`,
+          from_me: true,
+          metadata: { type: 'handoff_log' }
+        });
       }
     }
 

@@ -69,29 +69,32 @@ export async function resolveCustomQuote(
       // 📦 STRATEGY B: Internal Rate Table Mode
       console.log(`[Quote Engine] Calculating via internal tables for ${userId}`);
       
-      // Very basic internal engine: find a loose match on the zones
-      const { data: rates } = await supabase
-        .from('shipping_rates')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('is_active', true);
+      const [ratesResult, profileResult] = await Promise.all([
+        supabase.from('shipping_rates').select('*').eq('user_id', userId).eq('is_active', true),
+        supabase.from('profiles').select('exchange_rate, target_currency, base_currency').eq('id', userId).single()
+      ]);
+
+      const rates = ratesResult.data;
+      const profile = profileResult.data;
 
       if (!rates || rates.length === 0) {
         return 'We currently do not have automated shipping rates configured. Let me record your details so an agent can provide your custom quote.';
       }
 
-      // Try to find a matching route (case-insensitive basic match)
-      // For a real production app, you might use ILIKE in Postgres or exact Country Codes
       const bestMatch = rates.find((r: any) => 
         params.origin.toLowerCase().includes(r.origin_zone.toLowerCase()) && 
         params.destination.toLowerCase().includes(r.destination_zone.toLowerCase())
       );
 
       if (bestMatch) {
-        const total = Number(bestMatch.base_fee) + (Number(bestMatch.rate_per_kg) * params.weight_kg);
+        const totalBase = Number(bestMatch.base_fee) + (Number(bestMatch.rate_per_kg) * params.weight_kg);
+        const rate = profile?.exchange_rate || 1600;
+        const targetCurrency = profile?.target_currency || 'NGN';
+        const totalTarget = totalBase * rate;
+
         const timeStr = bestMatch.delivery_time_estimate ? `\n- **Est. Transit Time:** ${bestMatch.delivery_time_estimate}` : '';
         
-        return `💎 **Custom Quote Ready:**\n\n- **Route:** ${bestMatch.origin_zone} -> ${bestMatch.destination_zone}\n- **Weight:** ${params.weight_kg}kg\n- **Total Cost:** ${bestMatch.currency} ${total.toFixed(2)}${timeStr}\n\nWould you like me to generate a secure checkout link to lock in this rate?`;
+        return `💎 **Custom Quote Ready:**\n\n- **Route:** ${bestMatch.origin_zone} -> ${bestMatch.destination_zone}\n- **Weight:** ${params.weight_kg}kg\n- **Total Cost (USD):** USD ${totalBase.toFixed(2)}\n- **Total Cost (${targetCurrency}):** ${targetCurrency} ${totalTarget.toLocaleString()} (Rate: ${rate})${timeStr}\n\nWould you like me to generate a secure checkout link to lock in this rate?`;
       } else {
         return `Unfortunately, I couldn't find an automatic shipping rate for the route from **${params.origin}** to **${params.destination}**. Would you like me to schedule a callback with our logistics team to get you a custom price?`;
       }

@@ -454,6 +454,44 @@ async function handleToolCall(toolCall: any, supabase: any, userId: string, send
     } else {
       result = `FAILURE: Could not extract information from ${url}.`;
     }
+  } else if (name === 'query_internal_logistics_system') {
+    const { query } = args;
+    const { data: settings } = await supabase.from('quote_settings').select('webhook_url, webhook_secret').eq('user_id', userId).single();
+    
+    if (settings?.webhook_url) {
+      try {
+        const resp = await fetch(settings.webhook_url, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-chatsela-signature': settings.webhook_secret || ''
+          },
+          body: JSON.stringify({ action: 'query_intelligence', query, sender })
+        });
+        const data = await resp.json();
+        result = `SUCCESS: Internal system returned: ${JSON.stringify(data)}`;
+      } catch (e: any) {
+        result = `FAILURE: Internal system error: ${e.message}`;
+      }
+    } else {
+      result = `FAILURE: No internal logistics webhook configured.`;
+    }
+  } else if (name === 'convert_currency') {
+    const { amount_usd } = args;
+    const { data: profile } = await supabase.from('profiles').select('exchange_rate, target_currency, base_currency').eq('id', userId).single();
+    const rate = profile?.exchange_rate || 1600;
+    const target = profile?.target_currency || 'NGN';
+    const base = profile?.base_currency || 'USD';
+    const converted = amount_usd * rate;
+    result = `VERIFIED CONVERSION: ${base} ${amount_usd} is exactly ${target} ${converted.toLocaleString()} (Rate: ${rate}). Inform the customer that this is the final converted amount.`;
+  } else if (name === 'lookup_verified_product_price') {
+    const { product_name } = args;
+    const { data: product } = await supabase.from('products').select('*').eq('user_id', userId).ilike('name', `%${product_name}%`).limit(1).single();
+    if (product) {
+      result = `VERIFIED PRICE: The ${product.name} costs exactly ${product.currency} ${product.price}. Inform the customer using these exact figures.`;
+    } else {
+      result = `FAILURE: Product "${product_name}" not found in our verified catalog. Escalate to an agent.`;
+    }
   }
 
   return {
@@ -722,6 +760,48 @@ export async function handleAIResponse(sender: string, message: string, botId: s
             url: { type: 'string', description: 'The absolute URL to scrape (e.g. from the website_url in system context)' }
           },
           required: ['url']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'query_internal_logistics_system',
+        description: 'Queries the private internal logistics database for non-public information like current warehouse capacity, special handling rules, or hidden discounts.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'The specific internal detail to look up' }
+          },
+          required: ['query']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'convert_currency',
+        description: 'Converts a USD amount to the local currency (NGN) using the official live exchange rate from the database. Use this instead of doing math yourself.',
+        parameters: {
+          type: 'object',
+          properties: {
+            amount_usd: { type: 'number', description: 'The absolute USD amount to convert' }
+          },
+          required: ['amount_usd']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'lookup_verified_product_price',
+        description: 'Looks up the exact, verified price of a product from the database to prevent pricing hallucinations.',
+        parameters: {
+          type: 'object',
+          properties: {
+            product_name: { type: 'string', description: 'The name of the product to look up' }
+          },
+          required: ['product_name']
         }
       }
     }
