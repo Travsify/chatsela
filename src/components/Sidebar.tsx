@@ -39,6 +39,56 @@ export default function Sidebar({
           { name: 'Team', href: '/dashboard/team', icon: '🤝' },
           { name: 'Settings', href: '/dashboard/bot', icon: '⚙️' }
         ];
+      case 'real_estate':
+        return [
+          { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
+          { name: 'Listings', href: '/dashboard/bot?tab=catalog', icon: '🏘️' },
+          { name: 'Inbox', href: '/dashboard/chat', icon: '📥' },
+          { name: 'Viewings', href: '/dashboard/orders', icon: '📅' },
+          { name: 'Campaigns', href: '/dashboard/campaigns', icon: '🚀' },
+          { name: 'Leads', href: '/dashboard/leads', icon: '💎' },
+          { name: 'Analytics', href: '/dashboard/analytics', icon: '📊' },
+          { name: 'Bot Settings', href: '/dashboard/bot', icon: '⚙️' }
+        ];
+      case 'hospitality':
+        return [
+          { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
+          { name: 'Reservations', href: '/dashboard/orders', icon: '🛎️' },
+          { name: 'Inbox', href: '/dashboard/chat', icon: '📧' },
+          { name: 'Menu/Catalog', href: '/dashboard/bot?tab=catalog', icon: '🍽️' },
+          { name: 'Guest Feedback', href: '/dashboard/leads', icon: '⭐' },
+          { name: 'Staff Hub', href: '/dashboard/team', icon: '🤝' },
+          { name: 'Intelligence Hub', href: '/dashboard/bot', icon: '⚙️' }
+        ];
+      case 'automotive':
+        return [
+          { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
+          { name: 'Inventory', href: '/dashboard/bot?tab=catalog', icon: '🚗' },
+          { name: 'Inbox', href: '/dashboard/chat', icon: '💬' },
+          { name: 'Test Drives', href: '/dashboard/orders', icon: '🏁' },
+          { name: 'Buyers', href: '/dashboard/leads', icon: '👤' },
+          { name: 'Automations', href: '/dashboard/automations', icon: '🤖' },
+          { name: 'Bot Brain', href: '/dashboard/bot', icon: '🧠' }
+        ];
+      case 'education':
+        return [
+          { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
+          { name: 'Programs', href: '/dashboard/bot?tab=catalog', icon: '🎓' },
+          { name: 'Inbox', href: '/dashboard/chat', icon: '📨' },
+          { name: 'Enrollment', href: '/dashboard/orders', icon: '📝' },
+          { name: 'Students', href: '/dashboard/leads', icon: '👨‍🎓' },
+          { name: 'Knowledge Hub', href: '/dashboard/bot', icon: '📚' }
+        ];
+      case 'professional_services':
+        return [
+          { name: 'Dashboard', href: '/dashboard', icon: '🏠' },
+          { name: 'Consulting', href: '/dashboard/services', icon: '💼' },
+          { name: 'Inbox', href: '/dashboard/chat', icon: '📥' },
+          { name: 'Appointments', href: '/dashboard/orders', icon: '🗓️' },
+          { name: 'Clients/Leads', href: '/dashboard/leads', icon: '👥' },
+          { name: 'Campaigns', href: '/dashboard/campaigns', icon: '🚀' },
+          { name: 'Intelligence', href: '/dashboard/bot', icon: '🧠' }
+        ];
       case 'logistics':
         return [
           { name: 'Dashboard', href: '/dashboard', icon: '🚚' },
@@ -50,7 +100,7 @@ export default function Sidebar({
           { name: 'Intelligence Hub', href: '/dashboard/bot', icon: '🧠' },
           { name: 'Settings', href: '/dashboard/settings', icon: '⚙️' }
         ];
-      default: // Retail / General
+      default: // Retail / E-commerce
         return [
           { name: 'Dashboard', href: '/dashboard', icon: '📊' },
           { name: 'Products', href: '/dashboard/bot?tab=catalog', icon: '🛍️' },
