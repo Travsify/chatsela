@@ -466,7 +466,7 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
     revalidatePath('/dashboard/bot');
     revalidatePath('/dashboard/settings');
 
-    return { success: true, categorizedFacts: categorizedFacts || {}, productsExtracted: extractedProducts?.length || 0, targetUrl };
+    return { success: true, categorizedFacts: categorizedFacts || {}, productsExtracted: extractedItems.length || 0, targetUrl };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
