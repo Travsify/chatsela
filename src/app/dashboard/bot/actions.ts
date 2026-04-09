@@ -411,46 +411,46 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
     const aiResp = await executeChatSelaIntelligence(payload);
     const { categorizedFacts } = JSON.parse(aiResp.choices[0].message.content);
 
-    // 🏆 PRODUCT EXTRACTION (NEW: Auto-fetch products and prices)
+    // 🏆 PRODUCT & SERVICE EXTRACTION (The Magic Catalog Sync)
     const productPayload = {
       model: 'gpt-4o-mini',
       messages: [
         { 
           role: 'system', 
-          content: `Extract all PRODUCTS and SERVICES with their PRICES from the website text. 
-          Return ONLY a JSON array of objects: [ { "name": "...", "price": 0.0, "currency": "USD", "description": "..." } ]. 
-          If no price is found, use 0.0. Use your best judgment to find valid pricing for humans.` 
+          content: `Extract all BUSINESS PRODUCTS AND SERVICES with their PRICES from the provided text.
+          Focus on finding actual inventory or treatment/service lists.
+          Return ONLY a JSON object: { "items": [ { "name": "...", "price": 0.0, "currency": "USD", "description": "...", "type": "product|service" } ] }.
+          If you are unsure of the price, use 0.0. If the industry is professional/medical, favor the 'service' type.` 
         },
-        { role: 'user', content: `Website Content:\n\n${aggregatedMarkdown.substring(0, 15000)}` }
+        { role: 'user', content: `Analyze this business intelligence feed for a catalog:\n\n${aggregatedMarkdown.substring(0, 15000)}` }
       ],
       response_format: { type: "json_object" }
     };
 
     const productResp = await executeChatSelaIntelligence(productPayload);
     const productData = JSON.parse(productResp.choices[0].message.content);
-    const extractedProducts = productData.products || productData.suggestions || Object.values(productData)[0];
+    const extractedItems = productData.items || [];
 
-    if (Array.isArray(extractedProducts) && extractedProducts.length > 0) {
-      console.log(`🎁 [Intelligence] Extracted ${extractedProducts.length} items automatically.`);
+    if (Array.isArray(extractedItems) && extractedItems.length > 0) {
+      console.log(`🎁 [Intelligence] Extracted ${extractedItems.length} catalog items.`);
       
       const productInserts: any[] = [];
       const serviceInserts: any[] = [];
 
-      extractedProducts.forEach((p: any) => {
+      extractedItems.forEach((p: any) => {
         const item = {
           user_id: user.id,
-          name: p.name || 'Unknown Item',
+          name: p.name || 'Unnamed Item',
           price: Number(p.price) || 0,
           currency: p.currency || 'USD',
           description: p.description || '',
           is_active: true
         };
 
-        // 🧠 Heuristic: If price is monthly/hourly or it's a professional industry, it's likely a service
-        const isService = p.description?.toLowerCase().includes('service') || 
-                           p.name?.toLowerCase().includes('consultation') || 
-                           p.name?.toLowerCase().includes('treatment') ||
-                           industry === 'healthcare' || industry === 'professional_services';
+        const isService = p.type === 'service' || 
+                          p.description?.toLowerCase().includes('service') || 
+                          p.name?.toLowerCase().includes('consultation') ||
+                          industry === 'healthcare';
 
         if (isService) serviceInserts.push(item);
         else productInserts.push(item);
