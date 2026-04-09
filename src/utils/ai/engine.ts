@@ -218,62 +218,56 @@ async function generateCheckoutLink(supabase: any, userId: string, amount: numbe
 
 export async function handleMediaAIResponse(sender: string, mediaUrl: string, mediaType: string, botId: string): Promise<string> {
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  const { data: bot } = await supabase.from('bots').select('*').eq('id', botId).single();
+  
+  // 1. Fetch Bot & Context
+  const { data: bot } = await supabase.from('bots').select('*, profiles(*)').eq('id', botId).single();
   if (!bot) return 'I encountered an error finding your bot configuration.';
+  
   const userId = bot.user_id;
+  const profile = bot.profiles;
+  const industry = profile?.industry || 'retail';
 
-  const { data: settings } = await supabase.from('quote_settings').select('*').eq('user_id', userId).single();
-
-  await logBotActivity(supabase, userId, 'media_received', `📸 Received ${mediaType} from ${sender}. Processing with Vision OCR...`, sender);
+  await logBotActivity(supabase, userId, 'media_received', `📸 Received ${mediaType} from ${sender}. Analyzing with Vision...`, sender);
 
   try {
-    // 🧠 Vision OCR Strategy: Process with GPT-4o
+    // 🧠 Universal Vision Strategy: Process with GPT-4o
     const payload = {
       model: 'gpt-4o',
       messages: [
         {
           role: 'system',
-          content: `You are the GlobalLine Logistics Document Specialist. Your goal is to extract structured data from shipping documents (Commercial Invoices, Packing Lists).
-          Extract: 1. Total Invoice Value, 2. Currency, 3. List of Items, 4. Consignee Name, 5. Country of Origin.
-          Respond ONLY in raw JSON format: { "total_value": 0, "currency": "USD", "items": ["item1"], "consignee": "name", "origin": "country", "summary": "..." }`
+          content: `You are the AI Assistant for ${profile?.business_name || 'this business'}. 
+          You just received a ${mediaType} from a customer. 
+          Analyze the content and respond in a helpful, human way. 
+          If it's a product, identify it. If it's a document, summarize the key points (Total value, dates, names).
+          Industry Context: ${industry}.`
         },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Analyze this logistics document and extract the key details.' },
+            { type: 'text', text: `Please analyze this ${mediaType} I just sent you.` },
             { type: 'image_url', image_url: { url: mediaUrl } }
           ]
         }
-      ],
-      response_format: { type: "json_object" }
+      ]
     };
 
     const response = await executeChatSelaIntelligence(payload);
-    const result = JSON.parse(response.choices[0].message.content);
+    const aiAnalysis = response.choices[0].message.content;
 
-    // 🚀 Update GlobalLine Webhook
-    if (settings?.webhook_url) {
-      fetch(settings.webhook_url, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-chatsela-signature': settings.webhook_secret || ''
-        },
-        body: JSON.stringify({
-          action: 'attach_document',
-          sender: sender,
-          ocr_data: result,
-          media_url: mediaUrl
-        })
-      }).then(() => console.log('✅ [Vision] OCR data pushed to logistics webhook.'));
-    }
+    // 🚀 Background Knowledge Capture (Self-Healing)
+    await supabase.from('ai_knowledge_base').insert({
+      user_id: userId,
+      content: `[MEDIA_ANALYSIS] Result of ${mediaType} analysis from ${sender}: ${aiAnalysis}`,
+      category: 'media_insight',
+      source: mediaUrl
+    });
 
-    const finalMsg = `📝 **Document Processed Successfully!**\n\nI've analyzed your ${mediaType} and extracted the following details:\n- **Items:** ${result.items.join(', ')}\n- **Total Value:** ${result.currency} ${result.total_value}\n- **Origin:** ${result.origin}\n\nI have attached this to your shipment record. Is there anything else you need? 💎🚀`;
-    return finalMsg;
+    return aiAnalysis;
 
   } catch (err: any) {
-    console.error('🔥 [Vision OCR] Failed:', err.message);
-    return 'I received your document, but I had trouble reading the details automatically. Don\'t worry—I\'ve flagged this for our team to review manually! ✅';
+    console.error('🔥 [Vision Response] Failed:', err.message);
+    return 'I received your file, but I had a momentary glitch analyzing it. I\'ve passed it to my human teammates to check for you! ✅';
   }
 }
 
@@ -542,7 +536,7 @@ async function generateChatInsight(supabase: any, userId: string, phone: string,
 // Main Entry Point (ChatSela Engine)
 // ═══════════════════════════════════════════════════════
 
-export async function handleAIResponse(sender: string, message: string, botId: string) {
+export async function generateAIResponseOnly(sender: string, message: string, botId: string) {
   console.log(`🧠 [ChatSela Engine] Processing Bot: ${botId}, Sender: ${sender}`);
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -830,16 +824,34 @@ export async function handleAIResponse(sender: string, message: string, botId: s
         ]
       };
 
-      const nextResponse = await executeChatSelaIntelligence(nextPayload);
-      finalContent += (nextResponse.choices[0].message.content || '');
-    } else {
-      finalContent = responseMessage.content;
-    }
+    const nextResponse = await executeChatSelaIntelligence(nextPayload);
+    finalContent += (nextResponse.choices[0].message.content || '');
+  } else {
+    finalContent = responseMessage.content;
+  }
 
-    if (finalContent) {
-      // 🛡️ STRICT ACK: Verify Whapi actually accepted the message
-      const sendPayload = { to: sender, body: finalContent };
-      let sendResp = await fetch(`${WHAPI_BASE_URL}/messages/text`, {
+  return finalContent;
+}
+
+export async function handleAIResponse(sender: string, message: string, botId: string) {
+  console.log(`🧠 [ChatSela Engine] Processing Bot: ${botId}, Sender: ${sender}`);
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
+  const { data: bot } = await supabase.from('bots').select('*').eq('id', botId).single();
+  if (!bot) return null;
+  const userId = bot.user_id;
+
+  const { data: session } = await supabase.from('whatsapp_sessions').select('*').eq('user_id', userId).single();
+  const whapiToken = session?.whapi_token;
+  if (!whapiToken) return null;
+
+  // 1. Generate core AI response
+  const finalContent = await generateAIResponseOnly(sender, message, botId);
+
+  if (finalContent) {
+    // 🛡️ WhatsApp Delivery Logic
+    const sendPayload = { to: sender, body: finalContent };
+    let sendResp = await fetch(`${WHAPI_BASE_URL}/messages/text`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${whapiToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(sendPayload),

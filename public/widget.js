@@ -1,131 +1,113 @@
 (function() {
-  // 🛡️ Prevent multiple initializations
-  if (window.__chatsela_initialized) return;
-  window.__chatsela_initialized = true;
+  if (window.__chatsela_loaded) return;
+  window.__chatsela_loaded = true;
 
   const scriptTag = document.currentScript;
-  const scriptUrl = new URL(scriptTag.src);
-  const apiKey = scriptUrl.searchParams.get('key');
-  if (!apiKey) {
-    console.error('ChatSela: Missing API Key (key=...) in script tag.');
-    return;
+  const userId = scriptTag.getAttribute('data-id');
+  if (!userId) return console.error('ChatSela: data-id missing');
+
+  const API_BASE = scriptTag.src.replace('/widget.js', '');
+  let contactId = localStorage.getItem('chatsela_contact_id') || 'web_' + Math.random().toString(36).slice(2, 11);
+  localStorage.setItem('chatsela_contact_id', contactId);
+
+  // 1. Styles
+  const style = document.createElement('style');
+  style.innerHTML = `
+    #chatsela-widget-container { position: fixed; bottom: 30px; right: 30px; z-index: 999999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #chatsela-bubble { width: 60px; height: 60px; background: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 10px 25px rgba(0,0,0,0.2); transition: transform 0.3s; }
+    #chatsela-bubble:hover { transform: scale(1.1); }
+    #chatsela-bubble svg { width: 30px; height: 30px; fill: #00ff88; }
+    
+    #chatsela-window { display: none; width: 380px; height: 550px; background: #111; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); flex-direction: column; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: absolute; bottom: 80px; right: 0; }
+    #chatsela-header { padding: 20px; background: linear-gradient(135deg, #1a1a1a, #000); border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 12px; }
+    #chatsela-header h4 { margin: 0; color: #fff; font-size: 15px; font-weight: 700; }
+    #chatsela-header span { width: 8px; height: 8px; background: #00ff88; border-radius: 50%; box-shadow: 0 0 10px #00ff88; }
+    
+    #chatsela-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flexDirection: column; gap: 12px; }
+    .chatsela-msg { max-width: 80%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; margin-bottom: 8px; }
+    .chatsela-msg-user { align-self: flex-end; background: #00ff88; color: #000; margin-left: auto; }
+    .chatsela-msg-bot { align-self: flex-start; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.05); }
+    
+    #chatsela-input-area { padding: 15px; border-top: 1px solid rgba(255,255,255,0.05); display: flex; gap: 8px; background: #000; }
+    #chatsela-input { flex: 1; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 15px; color: #fff; font-size: 14px; outline: none; }
+    #chatsela-send { background: #00ff88; color: #000; border: none; border-radius: 10px; padding: 0 15px; cursor: pointer; font-weight: 700; }
+    
+    #chatsela-footer { padding: 10px; text-align: center; font-size: 10px; color: rgba(255,255,255,0.3); border-top: 1px solid rgba(255,255,255,0.02); }
+    #chatsela-footer a { color: #00ff88; text-decoration: none; }
+  `;
+  document.head.appendChild(style);
+
+  // 2. HTML Structure
+  const container = document.createElement('div');
+  container.id = 'chatsela-widget-container';
+  container.innerHTML = `
+    <div id="chatsela-window">
+      <div id="chatsela-header">
+        <span></span>
+        <h4>Agent Sela</h4>
+        <div style="margin-left: auto; cursor: pointer; opacity: 0.5;" onclick="document.getElementById('chatsela-window').style.display='none'">✕</div>
+      </div>
+      <div id="chatsela-messages"></div>
+      <div id="chatsela-input-area">
+        <input type="text" id="chatsela-input" placeholder="Type a message...">
+        <button id="chatsela-send">SEND</button>
+      </div>
+      <div id="chatsela-footer">Powered by <a href="https://chatsela.com" target="_blank">ChatSela AI</a></div>
+    </div>
+    <div id="chatsela-bubble">
+      <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+    </div>
+  `;
+  document.body.appendChild(container);
+
+  // 3. Logic
+  const bubble = document.getElementById('chatsela-bubble');
+  const windowEl = document.getElementById('chatsela-window');
+  const input = document.getElementById('chatsela-input');
+  const sendBtn = document.getElementById('chatsela-send');
+  const messagesEl = document.getElementById('chatsela-messages');
+
+  bubble.onclick = () => {
+    windowEl.style.display = windowEl.style.display === 'flex' ? 'none' : 'flex';
+    if (messagesEl.children.length === 0) {
+      addMessage('bot', 'Hello! 👋 How can I help you today?');
+    }
+  };
+
+  input.onkeypress = (e) => { if (e.key === 'Enter') handleSend(); };
+  sendBtn.onclick = handleSend;
+
+  function addMessage(role, text) {
+    const msg = document.createElement('div');
+    msg.className = `chatsela-msg chatsela-msg-${role}`;
+    msg.innerText = text;
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // 📂 1. God-Mode Sync Logic
-  async function syncIntelligence() {
-    function extractSiteData() {
-        const data = {
-            url: window.location.href,
-            title: document.title,
-            text: document.body.innerText.substring(0, 3000), // Better limit
-            attributes: {}
-        };
+  async function handleSend() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    addMessage('user', text);
 
-        // 🛍️ 1. Extract JSON-LD (Standard E-commerce)
-        try {
-            const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
-            ldScripts.forEach(script => {
-                const json = JSON.parse(script.innerText);
-                const product = json['@type'] === 'Product' ? json : (json['@graph']?.find(i => i['@type'] === 'Product'));
-                if (product) {
-                    const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
-                    if (offer) {
-                        data.attributes.price = offer.price || offer.lowPrice;
-                        data.attributes.currency = offer.priceCurrency;
-                        data.attributes.stock = offer.availability?.includes('InStock') ? 'in_stock' : 'out_of_stock';
-                    }
-                }
-            });
-        } catch (e) {}
-
-        // 🏷️ 2. Fallback: OpenGraph & Meta Tags
-        if (!data.attributes.price) {
-            data.attributes.price = document.querySelector('meta[property="og:price:amount"]')?.content || 
-                                   document.querySelector('meta[property="product:price:amount"]')?.content;
-            data.attributes.currency = document.querySelector('meta[property="og:price:currency"]')?.content || 
-                                     document.querySelector('meta[property="product:price:currency"]')?.content;
-        }
-
-        return data;
-    }
-
-    const data = {
-      apiKey: apiKey,
-      ...extractSiteData()
-    };
-
-      try {
-        const json = JSON.parse(s.innerText);
-        data.jsonLd.push(json);
-      } catch (e) {}
-    });
+    const typing = document.createElement('div');
+    typing.className = 'chatsela-msg chatsela-msg-bot';
+    typing.innerText = '...';
+    messagesEl.appendChild(typing);
 
     try {
-      // Use the origin of the script to find the API
-      const baseUrl = scriptUrl.origin;
-      await fetch(`${baseUrl}/api/widget/sync`, {
+      const resp = await fetch(`${API_BASE}/api/chat/web`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ userId, message: text, contactId })
       });
+      const data = await resp.json();
+      messagesEl.removeChild(typing);
+      addMessage('bot', data.response || "I'm having a bit of trouble thinking right now. Try again?");
     } catch (e) {
-      // Silent fail in production
+      messagesEl.removeChild(typing);
+      addMessage('bot', "Connection error. Please check your internet.");
     }
-  }
-
-  // 💬 2. Floating Icon Logic
-  function renderFloatingIcon() {
-    const iconEnabled = scriptUrl.searchParams.get('icon') === 'true';
-    const phone = scriptUrl.searchParams.get('phone');
-
-    if (!iconEnabled || !phone) return;
-
-    const container = document.createElement('div');
-    container.id = 'chatsela-floating-icon';
-    container.style.cssText = 'position: fixed; bottom: 30px; right: 30px; z-index: 999999; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);';
-    
-    container.onmouseover = () => container.style.transform = 'scale(1.1)';
-    container.onmouseout = () => container.style.transform = 'scale(1)';
-
-    const link = document.createElement('a');
-    link.href = `https://wa.me/${phone}?text=Hi! I am visiting your website and have a question about ${document.title}.`;
-    link.target = '_blank';
-    link.style.textDecoration = 'none';
-
-    const circle = document.createElement('div');
-    circle.style.cssText = 'background: #25D366; width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4);';
-    
-    circle.innerHTML = `
-      <svg width="38" height="38" viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg">
-        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.653a11.883 11.883 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-      </svg>
-    `;
-
-    link.appendChild(circle);
-    container.appendChild(link);
-    document.body.appendChild(container);
-
-    // Optional: Add a small pulse animation
-    const style = document.createElement('style');
-    style.innerHTML = `
-      @keyframes chatsela-pulse {
-        0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7); }
-        70% { box-shadow: 0 0 0 15px rgba(37, 211, 102, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); }
-      }
-      #chatsela-floating-icon div {
-        animation: chatsela-pulse 2s infinite;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  // 🚀 Start
-  syncIntelligence();
-  
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', renderFloatingIcon);
-  } else {
-    renderFloatingIcon();
   }
 })();
