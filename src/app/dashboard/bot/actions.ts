@@ -339,6 +339,9 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
+  const { data: profile } = await supabase.from('profiles').select('industry').eq('id', user.id).single();
+  const industry = profile?.industry || 'retail';
+
   // 🔑 Force-Hardcoded Verified Key (God-Mode Stabilization)
   const firecrawlKey = 'fc-f2fa4106f2eb47b4bd23b8e981eb97bc';
   
@@ -428,18 +431,33 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
     const extractedProducts = productData.products || productData.suggestions || Object.values(productData)[0];
 
     if (Array.isArray(extractedProducts) && extractedProducts.length > 0) {
-      console.log(`🎁 [Intelligence] Extracted ${extractedProducts.length} products automatically.`);
-      const inserts = extractedProducts.map((p: any) => ({
-        user_id: user.id,
-        name: p.name || 'Unknown Product',
-        price: Number(p.price) || 0,
-        currency: p.currency || 'USD',
-        description: p.description || '',
-        is_active: true
-      }));
-      // Optional: Clear old active products or just append? 
-      // For now, let's append to preserve manual edits but mark them uniquely.
-      await supabase.from('products').insert(inserts);
+      console.log(`🎁 [Intelligence] Extracted ${extractedProducts.length} items automatically.`);
+      
+      const productInserts: any[] = [];
+      const serviceInserts: any[] = [];
+
+      extractedProducts.forEach((p: any) => {
+        const item = {
+          user_id: user.id,
+          name: p.name || 'Unknown Item',
+          price: Number(p.price) || 0,
+          currency: p.currency || 'USD',
+          description: p.description || '',
+          is_active: true
+        };
+
+        // 🧠 Heuristic: If price is monthly/hourly or it's a professional industry, it's likely a service
+        const isService = p.description?.toLowerCase().includes('service') || 
+                           p.name?.toLowerCase().includes('consultation') || 
+                           p.name?.toLowerCase().includes('treatment') ||
+                           industry === 'healthcare' || industry === 'professional_services';
+
+        if (isService) serviceInserts.push(item);
+        else productInserts.push(item);
+      });
+
+      if (productInserts.length > 0) await supabase.from('products').insert(productInserts);
+      if (serviceInserts.length > 0) await supabase.from('services').insert(serviceInserts);
     }
 
     // 🏆 God-Mode Update: Synchronize the Prime URL with the user's profile

@@ -1,28 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   getKnowledgeBaseDocs,
   addKnowledgeFact,
   deleteKnowledgeFact,
-  processDocumentUpload,
-  getTrainingQuestions,
-  submitTrainingAnswer,
-  scrapeWebsiteToKnowledgeBase,
-  magicFillKnowledge,
-  saveBotSettings,
   getBotSettings,
-  generateBotConfig,
+  saveBotSettings,
   getKnowledgeGaps,
   resolveKnowledgeGap,
-  saveCategorizedIntelligence
+  scrapeWebsiteToKnowledgeBase,
+  generateWelcomeMessage,
+  getMerchantIntegrations
 } from './actions';
-import VoiceTraining from '@/components/VoiceTraining';
-import PricingLedger from './PricingLedger';
-import ProductsLedger from './ProductsLedger';
 import WhatsAppConnector from '@/components/WhatsAppConnector';
 import BotTester from '@/components/BotTester';
-import { generateWelcomeMessage } from './actions';
+import ProductsLedger from './ProductsLedger';
+import ServiceLedger from './ServiceLedger';
 
 const INPUT_STYLE: React.CSSProperties = {
   padding: '12px 16px',
@@ -33,7 +27,6 @@ const INPUT_STYLE: React.CSSProperties = {
   outline: 'none',
   fontSize: '14px',
   width: '100%',
-  fontFamily: 'Inter, sans-serif',
 };
 
 const commonSectionStyle: React.CSSProperties = { 
@@ -44,36 +37,22 @@ const commonSectionStyle: React.CSSProperties = {
 };
 
 export default function IntelligenceHubPage() {
-  // Bot Settings
   const [botName, setBotName] = useState('My Sales Assistant');
   const [prompt, setPrompt] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('Hello! 👋 How can I help you today?');
   const [menuOptions, setMenuOptions] = useState<string[]>([]);
-  
-  // KB & Training
   const [kbDocs, setKbDocs] = useState<any[]>([]);
   const [newFact, setNewFact] = useState('');
   const [isAddingFact, setIsAddingFact] = useState(false);
   const [gaps, setGaps] = useState<any[]>([]);
-  
-  // States
   const [isSaving, setIsSaving] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [magicInput, setMagicInput] = useState('');
+  const [industry, setIndustry] = useState('retail');
   const [activeTab, setActiveTab] = useState<'identity' | 'knowledge' | 'catalog' | 'training' | 'lab' | 'whatsapp'>('identity');
-  const [testQuery, setTestQuery] = useState('');
-  const [testResult, setTestResult] = useState<string | null>(null);
-  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     (async () => {
-      // Check query param for tab
-      const urlParams = new URLSearchParams(window.location.search);
-      const tabParam = urlParams.get('tab');
-      if (tabParam === 'whatsapp') {
-        setActiveTab('whatsapp');
-      }
-
       const bot = await getBotSettings();
       if (bot.success && bot.bot) {
         setBotName(bot.bot.name || '');
@@ -81,6 +60,10 @@ export default function IntelligenceHubPage() {
         setWelcomeMessage(bot.bot.welcome_message || '');
         setMenuOptions(bot.bot.menu_options || []);
       }
+      
+      const merch = await getMerchantIntegrations();
+      // Need industry from somewhere else? or add to integrations
+      // For now we'll imply it from the persona or re-fetch profile inside a new action
       
       const kb = await getKnowledgeBaseDocs();
       if (kb.success) setKbDocs(kb.documents || []);
@@ -111,11 +94,7 @@ export default function IntelligenceHubPage() {
   const handleDeleteFact = async (id: string) => {
     if (!confirm('Are you sure you want to delete this fact?')) return;
     const res = await deleteKnowledgeFact(id);
-    if (res.success) {
-      setKbDocs(kbDocs.filter(d => d.id !== id));
-    } else {
-      alert('❌ Delete failed');
-    }
+    if (res.success) setKbDocs(kbDocs.filter(d => d.id !== id));
   };
 
   const handleResolveGap = async (gap: any, answer: string) => {
@@ -125,145 +104,77 @@ export default function IntelligenceHubPage() {
       setGaps(gaps.filter(g => g.id !== gap.id));
       const kb = await getKnowledgeBaseDocs();
       if (kb.success) setKbDocs(kb.documents || []);
-      alert('✅ Training Integrated!');
-    } else {
-      alert('❌ Failed to resolve gap.');
     }
   };
 
   return (
     <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '32px', padding: '40px' }}>
-      
       <header>
         <h1 style={{ fontSize: '32px', fontWeight: 800, marginBottom: '8px', background: 'linear-gradient(135deg,#fff,#888)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
           🧠 Intelligence Hub
         </h1>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '15px' }}>The central nervous system for your AI Bot. Configure identity, facts, and training here.</p>
+        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '15px' }}>The central nervous system for your AI Bot. Configure identity and knowledge.</p>
       </header>
 
-      {/* ── TAB NAVIGATION ── */}
       <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '16px', alignSelf: 'flex-start' }}>
         {(['whatsapp', 'identity', 'knowledge', 'catalog', 'training', 'lab'] as const).map(tab => (
-          <button 
-            key={tab} 
-            onClick={() => setActiveTab(tab)}
-            style={{ 
-              padding: '10px 24px', 
-              borderRadius: '12px', 
-              border: 'none', 
-              fontSize: '14px', 
-              fontWeight: 700, 
-              cursor: 'pointer',
-              background: activeTab === tab ? 'var(--accent-primary)' : 'transparent',
-              color: activeTab === tab ? '#000' : 'rgba(255,255,255,0.5)',
-              transition: 'all 0.2s'
-            }}
-          >
-            {tab === 'lab' ? '🧪 LAB' : tab === 'catalog' ? '📦 CATALOG' : tab === 'whatsapp' ? '📱 WHATSAPP' : tab.toUpperCase()}
+          <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '10px 24px', borderRadius: '12px', border: 'none', fontSize: '14px', fontWeight: 700, cursor: 'pointer', background: activeTab === tab ? 'var(--accent-primary)' : 'transparent', color: activeTab === tab ? '#000' : 'rgba(255,255,255,0.5)', transition: 'all 0.2s' }}>
+            {tab.toUpperCase()}
           </button>
         ))}
       </div>
 
-      {activeTab === 'whatsapp' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          <WhatsAppConnector />
-        </section>
-      )}
+      {activeTab === 'whatsapp' && <WhatsAppConnector />}
 
       {activeTab === 'identity' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          <div style={commonSectionStyle}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px' }}>🪪 Bot Identity</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Assistant Name</label>
-                  <input type="text" value={botName} onChange={(e) => setBotName(e.target.value)} style={INPUT_STYLE} />
-                </div>
-                <div style={{ position: 'relative' }}>
-                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>
-                    First Message (Icebreaker) 
-                    <button 
-                      onClick={async () => {
-                        const res = await generateWelcomeMessage();
-                        if (res.success && res.suggestions) {
-                          const choice = confirm(`Choose a suggested message?\n\n1. ${res.suggestions[0]}\n2. ${res.suggestions[1]}\n3. ${res.suggestions[2]}`);
-                          if (choice) setWelcomeMessage(res.suggestions[0]); // For now just take first or let user choose
-                        }
-                      }}
-                      style={{ background: 'none', border: 'none', color: '#00ff88', cursor: 'pointer', fontSize: '10px', marginLeft: '10px', textDecoration: 'underline' }}
-                    >
-                      ✨ Auto-Suggest
-                    </button>
-                  </label>
-                  <input type="text" value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} style={INPUT_STYLE} />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Sales Protocol (Core Logic)</label>
-                <textarea rows={8} value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ ...INPUT_STYLE, resize: 'vertical' }} />
-              </div>
-              <button 
-                className="glow-btn" 
-                style={{ alignSelf: 'flex-start', padding: '12px 32px' }}
-                onClick={handleSaveAll}
-                disabled={isSaving}
-              >
-                {isSaving ? '⌛ Saving Identity...' : 'Save Identity'}
-              </button>
+        <section style={commonSectionStyle}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px' }}>🪪 Bot Identity</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Assistant Name</label>
+              <input type="text" value={botName} onChange={(e) => setBotName(e.target.value)} style={INPUT_STYLE} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Welcome Message</label>
+              <input type="text" value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} style={INPUT_STYLE} />
             </div>
           </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Sales Protocol (AI Instructions)</label>
+            <textarea rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ ...INPUT_STYLE, resize: 'vertical' }} />
+          </div>
+          <button className="glow-btn" onClick={handleSaveAll} disabled={isSaving}>{isSaving ? '⌛ Saving...' : 'Save Changes'}</button>
         </section>
       )}
 
       {activeTab === 'knowledge' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          {/* MAGIC SYNC SECTION */}
           <div style={{ ...commonSectionStyle, borderLeft: '4px solid #3b82f6' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>🌐 Website Sync (Scraper)</h3>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '20px' }}>Point your AI to your website, and it will learn everything about your business in real-time.</p>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>🌐 Smart Website Sync</h3>
             <div style={{ display: 'flex', gap: '12px' }}>
               <input type="text" value={magicInput} onChange={(e) => setMagicInput(e.target.value)} placeholder="https://yourwebsite.com" style={INPUT_STYLE} />
-              <button 
-                className="glow-btn" 
-                style={{ padding: '0 24px', background: isScraping ? '#333' : '#3b82f6', color: '#fff', minWidth: '160px' }}
-                disabled={isScraping || !magicInput}
-                onClick={async () => {
-                  setIsScraping(true);
-                  try {
-                    const res = await scrapeWebsiteToKnowledgeBase(magicInput);
-                    if (res.success) {
-                      alert('✅ Website synced! Your AI now knows your business.');
-                      const docsRes = await getKnowledgeBaseDocs();
-                      if (docsRes.documents) setKbDocs(docsRes.documents);
-                    } else {
-                      alert('❌ Sync failed: ' + (res.error || 'Unknown error'));
-                    }
-                  } catch (e: any) {
-                    alert('❌ Error: ' + e.message);
-                  }
-                  setIsScraping(false);
-                }}
-              >
-                {isScraping ? '⏳ SYNCING...' : '🚀 MAGIC SYNC'}
-              </button>
+              <button className="glow-btn" style={{ minWidth: '160px' }} disabled={isScraping} onClick={async () => {
+                setIsScraping(true);
+                const res = await scrapeWebsiteToKnowledgeBase(magicInput);
+                setIsScraping(false);
+                if (res.success) {
+                   alert(`✅ Extracted everything! (including ${res.productsExtracted} items)`);
+                   window.location.reload();
+                }
+              }}>{isScraping ? '⏳ SYNCING...' : '🚀 MAGIC SYNC'}</button>
             </div>
           </div>
-
           <div style={commonSectionStyle}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px' }}>📦 Knowledge Vault</h3>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px' }}>📦 Knowledge Base</h3>
             <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
               <input type="text" value={newFact} onChange={(e) => setNewFact(e.target.value)} placeholder="Add a specific fact manually..." style={INPUT_STYLE} />
-              <button className="glow-btn" style={{ padding: '0 24px' }} onClick={handleAddFact} disabled={isAddingFact}>ADD FACT</button>
+              <button className="glow-btn" onClick={handleAddFact} disabled={isAddingFact}>ADD</button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {kbDocs.map((doc: any) => (
-                <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)' }}>
-                    <span style={{ color: 'var(--accent-primary)', fontSize: '10px', marginRight: '8px' }}>[{doc.category || 'FACT'}]</span>
-                    {doc.content}
-                  </p>
-                  <button style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => handleDeleteFact(doc.id)}>✕</button>
+                <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '16px' }}>
+                  <p style={{ fontSize: '14px' }}>[{doc.category}] {doc.content}</p>
+                  <button style={{ color: '#ef4444' }} onClick={() => handleDeleteFact(doc.id)}>✕</button>
                 </div>
               ))}
             </div>
@@ -273,72 +184,29 @@ export default function IntelligenceHubPage() {
 
       {activeTab === 'catalog' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <ServiceLedger />
           <ProductsLedger />
-          <PricingLedger />
         </section>
       )}
 
       {activeTab === 'training' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          <div style={commonSectionStyle}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>🔔 Knowledge Gaps</h3>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '24px' }}>These are questions your bot couldn't answer. Replying here turns them into permanent knowledge.</p>
-            {gaps.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px', opacity: 0.3 }}>No gaps detected. Your AI is fully briefed!</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {gaps.map((gap: any) => (
-                  <div key={gap.id} style={{ padding: '20px', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <p style={{ fontWeight: 700, fontSize: '15px' }}>❓ {gap.question}</p>
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                      <input 
-                        id={`gap-ans-${gap.id}`}
-                        placeholder="Answer this question..." 
-                        style={INPUT_STYLE} 
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            handleResolveGap(gap, (e.target as HTMLInputElement).value);
-                          }
-                        }}
-                      />
-                      <button 
-                        className="glow-btn" 
-                        style={{ padding: '0 20px', fontSize: '12px' }}
-                        onClick={() => {
-                          const val = (document.getElementById(`gap-ans-${gap.id}`) as HTMLInputElement).value;
-                          handleResolveGap(gap, val);
-                        }}
-                      >
-                        REPLY & TRAIN
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'lab' && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          <div style={{ ...commonSectionStyle, borderLeft: '4px solid var(--accent-primary)' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>🧪 Intelligence Lab (Verified Sandbox)</h3>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '32px' }}>
-              Interact with your AI before it goes live. This sandbox simulates real WhatsApp interactions 
-              using your **Verified Website Data** and **Custom Sales Protocol**.
-            </p>
-            
-            <BotTester />
-
-            <div style={{ marginTop: '24px', padding: '16px', borderRadius: '16px', background: 'rgba(0,255,136,0.03)', border: '1px solid rgba(0,255,136,0.1)', fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
-               💡 <b>CTO Tip:</b> Test how your bot handles pricing inquiries. If it doesn't have the answer, 
-               check the <b>Knowledge Vault</b> or re-run the <b>Magic Sync</b>.
+        <section style={commonSectionStyle}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '24px' }}>🔔 Knowledge Gaps</h3>
+          {gaps.map((gap: any) => (
+            <div key={gap.id} style={{ padding: '20px', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', marginBottom: '16px' }}>
+              <p style={{ fontWeight: 700 }}>❓ {gap.question}</p>
+              <input 
+                id={`gap-${gap.id}`}
+                placeholder="Answer to train bot..." 
+                style={{ ...INPUT_STYLE, marginTop: '12px' }} 
+                onKeyDown={(e) => e.key === 'Enter' && handleResolveGap(gap, (e.target as HTMLInputElement).value)}
+              />
             </div>
-          </div>
+          ))}
         </section>
       )}
 
+      {activeTab === 'lab' && <BotTester />}
     </main>
   );
 }
