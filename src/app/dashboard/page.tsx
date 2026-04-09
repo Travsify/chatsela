@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getDashboardStats } from './actions';
 import WhatsAppConnector from '@/components/WhatsAppConnector';
+import LiveChat from '@/components/LiveChat';
 import { toggleBotStatus, scrapeWebsiteToKnowledgeBase } from './bot/actions';
 
 export default function Dashboard() {
@@ -14,6 +15,52 @@ export default function Dashboard() {
   const [bot, setBot] = useState<any>(null);
   const [stats, setStats] = useState({ totalValue: 0, hotLeads: 0, kbCount: 0, totalInsights: 0 });
   const [session, setSession] = useState<any>(null);
+
+  const industryConfigs: Record<string, any> = {
+    retail: { 
+      title: 'Sales Engine', icon: '🛍️', persona: 'Sales Closer',
+      proTip: 'God-Mode uses this URL to find and share pricing PDFs automatically with customers.',
+      activityLabel: (s: string) => s === 'positive' ? 'is a high-value lead.' : 'joined the chat.'
+    },
+    logistics: { 
+      title: 'Logistics Hub', icon: '🚚', persona: 'Operations Hub',
+      proTip: 'AI uses your site to calculate shipping quotes and track waybills in real-time.',
+      activityLabel: (s: string) => s === 'positive' ? 'is requesting a shipping quote.' : 'is tracking a cargo.'
+    },
+    real_estate: { 
+      title: 'Leasing Portal', icon: '🏠', persona: 'Listing Expert',
+      proTip: 'Your AI is qualifying leads based on budget and booking virtual tours.',
+      activityLabel: (s: string) => s === 'positive' ? 'is interested in a viewing.' : 'queried a listing.'
+    },
+    healthcare: { 
+      title: 'Patient Assistant', icon: '🏥', persona: 'Booking Assistant',
+      proTip: 'AI handles appointment bookings and patient FAQ automatically.',
+      activityLabel: (s: string) => s === 'positive' ? 'is ready to book.' : 'asked about services.'
+    },
+    professional_services: { 
+      title: 'Consultancy Bot', icon: '💼', persona: 'Professional Services',
+      proTip: 'AI is filtering high-value clients and booking discovery calls.',
+      activityLabel: (s: string) => s === 'positive' ? 'is a qualified opportunity.' : 'inquired about services.'
+    },
+    hospitality: { 
+      title: 'Hospitality Desk', icon: '🍽️', persona: 'Digital Host',
+      proTip: 'AI is managing reservations and order coordination from your menu.',
+      activityLabel: (s: string) => s === 'positive' ? 'is making a reservation.' : 'browsed the menu.'
+    },
+    automotive: { 
+      title: 'Showroom Engine', icon: '🚗', persona: 'Showroom Assistant',
+      proTip: 'AI is scheduling test drives and sharing inventory specs.',
+      activityLabel: (s: string) => s === 'positive' ? 'is booking a test drive.' : 'checked inventory.'
+    },
+    education: { 
+      title: 'Admissions Officer', icon: '🎓', persona: 'Education & EdTech',
+      proTip: 'AI is assisting with course inquiries and enrollment steps.',
+      activityLabel: (s: string) => s === 'positive' ? 'is ready to enroll.' : 'asked about courses.'
+    },
+  };
+
+  const currentIndustry = profile?.industry || 'retail';
+  const config = industryConfigs[currentIndustry] || industryConfigs.retail;
   const [recentInsights, setRecentInsights] = useState<any[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState('');
@@ -113,12 +160,12 @@ export default function Dashboard() {
 
         <div style={{ zIndex: 1 }}>
           <h1 style={{ fontSize: '48px', fontWeight: 900, letterSpacing: '-0.04em', marginBottom: '12px' }}>
-            {isBotActive ? 'Your Sales Engine is Live 🚀' : 'AI Engine is Paused ⏸️'}
+            {isBotActive ? `Your ${config.title} is Live ${config.icon}` : `AI ${config.title} is Paused ⏸️`}
           </h1>
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '18px', maxWidth: '600px', margin: '0 auto 32px' }}>
             {isBotActive 
-              ? `Currently managing conversations for ${businessName} with God-Mode intelligence active.`
-              : `Total autonomy is temporarily suspended. Click below to re-engage your sales closer.`}
+              ? `Currently managing conversations for ${businessName} with specialized ${config.persona} intelligence active.`
+              : `Total autonomy is temporarily suspended. Click below to re-engage your ${config.persona.toLowerCase()}.`}
           </p>
 
           <button onClick={handleToggle} className="glow-btn" style={{ 
@@ -147,6 +194,23 @@ export default function Dashboard() {
             ) : (
               <Link href="/dashboard/bot?tab=whatsapp" style={{ color: '#ff4444', textDecoration: 'underline', fontSize: '11px' }}>(Connect Now)</Link>
             )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
+            <span>🏷️ Industry:</span>
+            <select 
+              value={currentIndustry} 
+              onChange={async (e) => {
+                const val = e.target.value;
+                const { updateIndustry } = await import('./actions');
+                await updateIndustry(val);
+                window.location.reload();
+              }}
+              style={{ background: 'none', border: 'none', color: '#fff', fontSize: '13px', cursor: 'pointer', outline: 'none', textDecoration: 'underline' }}
+            >
+              {Object.keys(industryConfigs).map(key => (
+                <option key={key} value={key} style={{ background: '#111' }}>{industryConfigs[key].persona}</option>
+              ))}
+            </select>
           </div>
           <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: profile?.website_url ? '#3b82f6' : 'rgba(255,255,255,0.3)' }}>
@@ -205,7 +269,7 @@ export default function Dashboard() {
 
           
           <div style={{ marginTop: 'auto', padding: '16px', borderRadius: '16px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.1)', fontSize: '13px', color: '#3b82f6' }}>
-            🚀 <b>Pro Tip:</b> God-Mode uses this URL to find and share pricing PDFs automatically with customers.
+            🚀 <b>Pro Tip:</b> {config.proTip}
           </div>
         </section>
 
@@ -238,7 +302,7 @@ export default function Dashboard() {
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div style={{ fontSize: '18px' }}>{insight.sentiment === 'positive' ? '🔥' : '💬'}</div>
                     <div style={{ fontSize: '14px' }}>
-                      <b>{insight.customer_phone}</b> {insight.sentiment === 'positive' ? 'is a high-value lead.' : 'joined the chat.'}
+                      <b>{insight.customer_phone}</b> {config.activityLabel(insight.sentiment)}
                     </div>
                   </div>
                   <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>{new Date(insight.last_interaction_at).toLocaleTimeString()}</div>
@@ -251,6 +315,17 @@ export default function Dashboard() {
               [SYSTEM] {isBotActive ? 'AI Engine Scanning for pricing updates...' : 'AI Engine Idle.'}
             </div>
           </div>
+        </section>
+
+        {/* ── LIVE INBOX (HUMAN TAKEOVER) ── */}
+        <section style={{ gridColumn: 'span 2' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontSize: '20px', fontWeight: 800 }}>📥 Live Inbox (Human Takeover)</h3>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
+              Industry: <span style={{ color: 'var(--accent-primary)' }}>{currentIndustry.toUpperCase()}</span>
+            </div>
+          </div>
+          <LiveChat industry={currentIndustry} />
         </section>
 
         {/* ── SMART SNIPPET CARD ── */}

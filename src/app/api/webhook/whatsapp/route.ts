@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
         
         // 6. Log Bot's outgoing message
         if (aiResponse) {
-          console.log(`✅ [Whapi Webhook] AI Response Generated and Sent: "${aiResponse.substring(0, 50)}..."`);
+          console.log(`✅ [Whapi Webhook] AI Response Generated: "${aiResponse.substring(0, 50)}..."`);
           await supabaseAdmin.from('messages').insert({
             user_id: userId,
             sender: sender,

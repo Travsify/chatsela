@@ -31,6 +31,7 @@ export async function signup(formData: FormData) {
     options: {
       data: {
         business_name: formData.get('business_name') as string,
+        industry: formData.get('industry') as string,
       }
     }
   }

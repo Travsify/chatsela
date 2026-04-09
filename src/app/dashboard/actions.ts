@@ -508,3 +508,160 @@ export async function getBotActivity() {
 
   return data || [];
 }
+
+/**
+ * UPDATE INDUSTRY
+ * Allows the user to change their industry focus.
+ */
+export async function updateIndustry(industry: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  // 1. Update Profile
+  const { error: profileErr } = await supabase
+    .from('profiles')
+    .update({ industry })
+    .eq('id', user.id);
+
+  if (profileErr) throw new Error(profileErr.message);
+
+  // 2. Fetch Template Prompt
+  const { data: template } = await supabase
+    .from('industry_templates')
+    .select('default_prompt, display_name')
+    .eq('industry_key', industry)
+    .single();
+
+  if (template?.default_prompt) {
+    // 3. Update Bot Prompt (If bot exists)
+    await supabase
+      .from('bots')
+      .update({ 
+        prompt: template.default_prompt,
+        name: `${template.display_name} Assistant`
+      })
+      .eq('user_id', user.id);
+  }
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
+
+/**
+ * SEND WHATSAPP MESSAGE (Human Takeover)
+ * Sends a direct message to a customer via Whapi and marks the interaction as human-driven.
+ */
+export async function sendWhatsAppMessage(to: string, body: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const token = await getUserWhapiToken(user.id);
+  if (!token) throw new Error('WhatsApp session not connected.');
+
+  try {
+    const response = await fetch(`${WHAPI_BASE_URL}/messages/text`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to, body })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.message || 'Failed to send message');
+    }
+
+    // Mark that a human just intervened (optional: turn off bot automatically?)
+    await supabase.from('handoff_status').upsert({
+      user_id: user.id,
+      customer_phone: to,
+      is_bot_active: false, // Turn off bot on manual reply
+      last_human_activity: new Date().toISOString()
+    }, { onConflict: 'user_id,customer_phone' });
+
+    revalidatePath('/dashboard/chat');
+    return { success: true };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+}
+
+/**
+ * TOGGLE CHAT BOT
+ * Manually enables or disables the AI bot for a specific customer.
+ */
+export async function toggleChatBot(customerPhone: string, active: boolean) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase.from('handoff_status').upsert({
+    user_id: user.id,
+    customer_phone: customerPhone,
+    is_bot_active: active,
+    last_toggle_at: new Date().toISOString()
+  }, { onConflict: 'user_id,customer_phone' });
+
+  if (error) throw new Error(error.message);
+  revalidatePath('/dashboard/chat');
+  return { success: true };
+}
+
+/**
+ * GET CHAT HISTORY
+ * Fetches the raw message history for a specific contact from Whapi.
+ */
+export async function getChatHistory(contactId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const token = await getUserWhapiToken(user.id);
+  if (!token) throw new Error('WhatsApp session not connected.');
+
+  try {
+    const response = await fetch(`${WHAPI_BASE_URL}/messages/list/${contactId}?count=50`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await response.json();
+    return { success: true, messages: data.messages || [] };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+}
+
+/**
+ * GET CONTACTS
+ * Fetches active conversation list from Whapi.
+ */
+export async function getWhatsAppContacts() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const token = await getUserWhapiToken(user.id);
+  if (!token) return { success: false, error: 'No token' };
+
+  const response = await fetch(`${WHAPI_BASE_URL}/contacts/all?count=50`, {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await response.json();
+  
+  // Also get bot statuses for these contacts
+  const { data: botStatuses } = await supabase
+    .from('handoff_status')
+    .select('*')
+    .eq('user_id', user.id);
+
+  return { 
+    success: true, 
+    contacts: data.contacts || [], 
+    botStatuses: botStatuses || [] 
+  };
+}

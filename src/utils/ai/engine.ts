@@ -602,10 +602,15 @@ export async function handleAIResponse(sender: string, message: string, botId: s
   - Target/Local Currency: ${profile?.target_currency || 'NGN'}
   - Exchange Rate (1 ${profile?.base_currency || 'USD'} = ${profile?.exchange_rate || 1600.0} ${profile?.target_currency || 'NGN'})
   
-  ### 🦁 THE INTERACTIVITY DIRECTIVE (MANDATORY):
-  - For ANY shipping or logistics quote, you MUST interrogate for: 1. Weight, 2. Dimensions (L,W,H), 3. Service Type (Air/Ocean), 4. Pickup City, 5. Destination. 
-  - Never give a final price without these. 
-  - Be THRILLING but ACCURATE. 🛡️
+  ### 🌍 GLOBAL SYSTEM CONTEXT:
+  - CURRENT LOCAL DATE: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+  - Base Currency: ${profile?.base_currency || 'USD'}
+  - Target/Local Currency: ${profile?.target_currency || 'NGN'}
+  - Exchange Rate (1 ${profile?.base_currency || 'USD'} = ${profile?.exchange_rate || 1600.0} ${profile?.target_currency || 'NGN'})
+  
+  ### 🛡️ THE SECURITY PROTOCOL (TENANT-ISOLATED):
+  - You are strictly prohibited from referencing any knowledge or pricing not specifically provided in this session context.
+  - If a user asks about services you don't recognize, do not guess. Escalate to 'report_knowledge_gap'. 🛡️
   `.trim();
 
   const tools = [
@@ -832,11 +837,44 @@ export async function handleAIResponse(sender: string, message: string, botId: s
     }
 
     if (finalContent) {
-      await fetch(`${WHAPI_BASE_URL}/messages/text`, {
+      // 🛡️ STRICT ACK: Verify Whapi actually accepted the message
+      const sendPayload = { to: sender, body: finalContent };
+      let sendResp = await fetch(`${WHAPI_BASE_URL}/messages/text`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${whapiToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: sender, body: finalContent }),
+        body: JSON.stringify(sendPayload),
       });
+
+      let sendBody: any = {};
+      try { sendBody = await sendResp.json(); } catch (e) {}
+
+      if (!sendResp.ok) {
+        console.error(`❌ [ChatSela Send] DELIVERY FAILED (${sendResp.status}):`, JSON.stringify(sendBody));
+        
+        // 🔄 Retry with @s.whatsapp.net suffix (some channels require the full JID)
+        const jidSender = sender.includes('@') ? sender : `${sender}@s.whatsapp.net`;
+        if (jidSender !== sender) {
+          console.log(`🔄 [ChatSela Send] Retrying with JID format: ${jidSender}...`);
+          const retryResp = await fetch(`${WHAPI_BASE_URL}/messages/text`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${whapiToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: jidSender, body: finalContent }),
+          });
+          let retryBody: any = {};
+          try { retryBody = await retryResp.json(); } catch (e) {}
+
+          if (retryResp.ok) {
+            console.log(`✅ [ChatSela Send] JID retry SUCCEEDED.`);
+          } else {
+            console.error(`❌ [ChatSela Send] JID retry ALSO FAILED (${retryResp.status}):`, JSON.stringify(retryBody));
+            await logBotActivity(supabase, userId, 'delivery_failed', `❌ Message to ${sender} failed to deliver. Whapi Error: ${sendBody?.message || sendBody?.error?.message || sendResp.status}`, sender);
+          }
+        } else {
+          await logBotActivity(supabase, userId, 'delivery_failed', `❌ Message to ${sender} failed to deliver. Whapi Error: ${sendBody?.message || sendBody?.error?.message || sendResp.status}`, sender);
+        }
+      } else {
+        console.log(`✅ [ChatSela Send] Delivered to ${sender}. Whapi ID: ${sendBody?.message_id || sendBody?.sent?.id || 'OK'}`);
+      }
     }
 
     await Promise.all([

@@ -19,7 +19,10 @@ import {
 } from './actions';
 import VoiceTraining from '@/components/VoiceTraining';
 import PricingLedger from './PricingLedger';
+import ProductsLedger from './ProductsLedger';
 import WhatsAppConnector from '@/components/WhatsAppConnector';
+import BotTester from '@/components/BotTester';
+import { generateWelcomeMessage } from './actions';
 
 const INPUT_STYLE: React.CSSProperties = {
   padding: '12px 16px',
@@ -57,7 +60,7 @@ export default function IntelligenceHubPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [magicInput, setMagicInput] = useState('');
-  const [activeTab, setActiveTab] = useState<'identity' | 'knowledge' | 'training' | 'lab' | 'whatsapp'>('identity');
+  const [activeTab, setActiveTab] = useState<'identity' | 'knowledge' | 'catalog' | 'training' | 'lab' | 'whatsapp'>('identity');
   const [testQuery, setTestQuery] = useState('');
   const [testResult, setTestResult] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
@@ -140,7 +143,7 @@ export default function IntelligenceHubPage() {
 
       {/* ── TAB NAVIGATION ── */}
       <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '16px', alignSelf: 'flex-start' }}>
-        {(['whatsapp', 'identity', 'knowledge', 'training', 'lab'] as const).map(tab => (
+        {(['whatsapp', 'identity', 'knowledge', 'catalog', 'training', 'lab'] as const).map(tab => (
           <button 
             key={tab} 
             onClick={() => setActiveTab(tab)}
@@ -156,7 +159,7 @@ export default function IntelligenceHubPage() {
               transition: 'all 0.2s'
             }}
           >
-            {tab === 'lab' ? '🧪 LAB' : tab === 'whatsapp' ? '📱 WHATSAPP' : tab.toUpperCase()}
+            {tab === 'lab' ? '🧪 LAB' : tab === 'catalog' ? '📦 CATALOG' : tab === 'whatsapp' ? '📱 WHATSAPP' : tab.toUpperCase()}
           </button>
         ))}
       </div>
@@ -177,8 +180,22 @@ export default function IntelligenceHubPage() {
                   <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>Assistant Name</label>
                   <input type="text" value={botName} onChange={(e) => setBotName(e.target.value)} style={INPUT_STYLE} />
                 </div>
-                <div>
-                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>First Message (Icebreaker)</label>
+                <div style={{ position: 'relative' }}>
+                  <label style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '8px' }}>
+                    First Message (Icebreaker) 
+                    <button 
+                      onClick={async () => {
+                        const res = await generateWelcomeMessage();
+                        if (res.success && res.suggestions) {
+                          const choice = confirm(`Choose a suggested message?\n\n1. ${res.suggestions[0]}\n2. ${res.suggestions[1]}\n3. ${res.suggestions[2]}`);
+                          if (choice) setWelcomeMessage(res.suggestions[0]); // For now just take first or let user choose
+                        }
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#00ff88', cursor: 'pointer', fontSize: '10px', marginLeft: '10px', textDecoration: 'underline' }}
+                    >
+                      ✨ Auto-Suggest
+                    </button>
+                  </label>
                   <input type="text" value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} style={INPUT_STYLE} />
                 </div>
               </div>
@@ -254,6 +271,13 @@ export default function IntelligenceHubPage() {
         </section>
       )}
 
+      {activeTab === 'catalog' && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <ProductsLedger />
+          <PricingLedger />
+        </section>
+      )}
+
       {activeTab === 'training' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           <div style={commonSectionStyle}>
@@ -299,45 +323,18 @@ export default function IntelligenceHubPage() {
       {activeTab === 'lab' && (
         <section style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           <div style={{ ...commonSectionStyle, borderLeft: '4px solid var(--accent-primary)' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>🧪 Intelligence Lab (AGI Verified)</h3>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '24px' }}>
-              Want to see your AI in action? Ask a question about your products or business. 
-              The AI will **sweep your website in real-time** to find the answer, proving its God-Mode capabilities.
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '12px' }}>🧪 Intelligence Lab (Verified Sandbox)</h3>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '14px', marginBottom: '32px' }}>
+              Interact with your AI before it goes live. This sandbox simulates real WhatsApp interactions 
+              using your **Verified Website Data** and **Custom Sales Protocol**.
             </p>
             
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
-              <input 
-                placeholder="e.g. Do we have any new pricing for the luxury model?" 
-                value={testQuery}
-                onChange={(e) => setTestQuery(e.target.value)}
-                style={INPUT_STYLE} 
-              />
-              <button 
-                className="glow-btn" 
-                disabled={isTesting || !testQuery}
-                onClick={async () => {
-                  setIsTesting(true);
-                  setTestResult(null);
-                  const { testIntelligence } = await import('./actions');
-                  const res = await testIntelligence(testQuery);
-                  setTestResult(res.answer);
-                  setIsTesting(false);
-                }}
-                style={{ padding: '0 24px' }}
-              >
-                {isTesting ? '⌛ SCANNING...' : 'TEST AI ENGINE'}
-              </button>
-            </div>
+            <BotTester />
 
-            {testResult && (
-              <div style={{ padding: '24px', borderRadius: '20px', background: 'rgba(0,255,136,0.03)', border: '1px solid rgba(0,255,136,0.1)' }}>
-                <p style={{ fontSize: '12px', fontWeight: 800, color: 'var(--accent-primary)', marginBottom: '8px', textTransform: 'uppercase' }}>AI Response:</p>
-                <p style={{ fontSize: '15px', lineHeight: '1.6', color: '#fff' }}>{testResult}</p>
-                <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>
-                  <span style={{ color: '#00ff88' }}>●</span> Verified via Real-time Web Intelligence
-                </div>
-              </div>
-            )}
+            <div style={{ marginTop: '24px', padding: '16px', borderRadius: '16px', background: 'rgba(0,255,136,0.03)', border: '1px solid rgba(0,255,136,0.1)', fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+               💡 <b>CTO Tip:</b> Test how your bot handles pricing inquiries. If it doesn't have the answer, 
+               check the <b>Knowledge Vault</b> or re-run the <b>Magic Sync</b>.
+            </div>
           </div>
         </section>
       )}

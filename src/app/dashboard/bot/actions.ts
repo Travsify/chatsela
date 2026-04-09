@@ -173,7 +173,62 @@ export async function magicFillKnowledge(category: string, businessName: string)
   }
 }
 
-// ─── Service Pricing Ledger ──────────────────────────────────────────────────
+// ─── Products & Services Pricing Ledger ──────────────────────────────────────
+
+export async function getProducts() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true, products: data || [] };
+}
+
+export async function saveProduct(product: { 
+  id?: string; 
+  name: string; 
+  price: number; 
+  currency?: string; 
+  description?: string; 
+  image_url?: string;
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  if (product.id) {
+    const { error } = await supabase
+      .from('products')
+      .update({ ...product })
+      .eq('id', product.id)
+      .eq('user_id', user.id);
+    if (error) return { success: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from('products')
+      .insert([{ ...product, user_id: user.id }]);
+    if (error) return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function deleteProduct(id: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const { error } = await supabase.from('products').delete().eq('id', id).eq('user_id', user.id);
+  if (error) return { success: false, error: error.message };
+
+  return { success: true };
+}
 
 export async function getServicesPricing() {
   const supabase = await createClient();
@@ -353,13 +408,47 @@ export async function scrapeWebsiteToKnowledgeBase(url: string) {
     const aiResp = await executeChatSelaIntelligence(payload);
     const { categorizedFacts } = JSON.parse(aiResp.choices[0].message.content);
 
+    // 🏆 PRODUCT EXTRACTION (NEW: Auto-fetch products and prices)
+    const productPayload = {
+      model: 'gpt-4o-mini',
+      messages: [
+        { 
+          role: 'system', 
+          content: `Extract all PRODUCTS and SERVICES with their PRICES from the website text. 
+          Return ONLY a JSON array of objects: [ { "name": "...", "price": 0.0, "currency": "USD", "description": "..." } ]. 
+          If no price is found, use 0.0. Use your best judgment to find valid pricing for humans.` 
+        },
+        { role: 'user', content: `Website Content:\n\n${aggregatedMarkdown.substring(0, 15000)}` }
+      ],
+      response_format: { type: "json_object" }
+    };
+
+    const productResp = await executeChatSelaIntelligence(productPayload);
+    const productData = JSON.parse(productResp.choices[0].message.content);
+    const extractedProducts = productData.products || productData.suggestions || Object.values(productData)[0];
+
+    if (Array.isArray(extractedProducts) && extractedProducts.length > 0) {
+      console.log(`🎁 [Intelligence] Extracted ${extractedProducts.length} products automatically.`);
+      const inserts = extractedProducts.map((p: any) => ({
+        user_id: user.id,
+        name: p.name || 'Unknown Product',
+        price: Number(p.price) || 0,
+        currency: p.currency || 'USD',
+        description: p.description || '',
+        is_active: true
+      }));
+      // Optional: Clear old active products or just append? 
+      // For now, let's append to preserve manual edits but mark them uniquely.
+      await supabase.from('products').insert(inserts);
+    }
+
     // 🏆 God-Mode Update: Synchronize the Prime URL with the user's profile
     await supabase.from('profiles').update({ website_url: targetUrl }).eq('id', user.id);
     revalidatePath('/dashboard');
     revalidatePath('/dashboard/bot');
     revalidatePath('/dashboard/settings');
 
-    return { success: true, categorizedFacts: categorizedFacts || {}, linksScraped: [targetUrl, ...targetLinks], targetUrl };
+    return { success: true, categorizedFacts: categorizedFacts || {}, productsExtracted: extractedProducts?.length || 0, targetUrl };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -463,6 +552,38 @@ export async function saveMerchantIntegrations(settings: {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+export async function generateWelcomeMessage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  try {
+    const { data: profile } = await supabase.from('profiles').select('business_name, industry').eq('id', user.id).single();
+    const { data: bot } = await supabase.from('bots').select('prompt').eq('user_id', user.id).single();
+
+    const payload = {
+      model: 'gpt-4o-mini',
+      messages: [
+        { 
+          role: 'system', 
+          content: `Create 3 catchy, high-conversion WhatsApp welcome messages for a ${profile?.industry || 'business'} called "${profile?.business_name || 'Business'}". 
+          The message should be warm, human-like, and encourage the customer to ask a question. 
+          Return ONLY a JSON object: { "suggestions": ["...", "...", "..."] }.` 
+        },
+        { role: 'user', content: `Base my welcome message on this bot prompt: ${bot?.prompt || 'Generic AI Sales'}` }
+      ],
+      response_format: { type: 'json_object' }
+    };
+
+    const aiResp = await executeChatSelaIntelligence(payload);
+    const { suggestions } = JSON.parse(aiResp.choices[0].message.content);
+
+    return { success: true, suggestions };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
 
 export async function generateBotConfig(input: string) {
   // ... (keeping internal logic same but calling executeChatSelaIntelligence)
