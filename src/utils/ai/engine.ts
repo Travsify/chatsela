@@ -831,6 +831,10 @@ export async function generateAIResponseOnly(sender: string, message: string, bo
   }
 
   return finalContent;
+  } catch (err: any) {
+    console.error('🔥 [AI Thinking] Failed:', err.message);
+    return "I am having internal thoughts that are a bit cluttered right now. Can we try that again?";
+  }
 }
 
 export async function handleAIResponse(sender: string, message: string, botId: string) {
