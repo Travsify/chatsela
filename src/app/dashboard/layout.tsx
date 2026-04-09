@@ -18,7 +18,7 @@ export default async function DashboardLayout({
   // Fetch profile to pass props to Sidebar
   const { data: profile } = await supabase
     .from('profiles')
-    .select('business_name, billing_tier')
+    .select('business_name, billing_tier, industry')
     .eq('id', user.id)
     .single();
 
@@ -34,6 +34,7 @@ export default async function DashboardLayout({
         businessName={profile?.business_name || user.email?.split('@')[0]} 
         billingTier={profile?.billing_tier} 
         isBotActive={bot?.status === 'active'}
+        industry={profile?.industry || 'retail'}
       />
       <main className="main-content">
         {children}

@@ -33,9 +33,9 @@ export default function Dashboard() {
       activityLabel: (s: string) => s === 'positive' ? 'is interested in a viewing.' : 'queried a listing.'
     },
     healthcare: { 
-      title: 'Patient Assistant', icon: '🏥', persona: 'Booking Assistant',
+      title: 'Patient Care Hub', icon: '🏥', persona: 'Medical Assistant',
       proTip: 'AI handles appointment bookings and patient FAQ automatically.',
-      activityLabel: (s: string) => s === 'positive' ? 'is ready to book.' : 'asked about services.'
+      activityLabel: (s: string) => s === 'positive' ? 'is ready to book a consultation.' : 'asked about services.'
     },
     professional_services: { 
       title: 'Consultancy Bot', icon: '💼', persona: 'Professional Services',
@@ -94,6 +94,7 @@ export default function Dashboard() {
   const isConnected = session?.status === 'connected';
   const isBotActive = bot?.status === 'active';
   const businessName = profile?.business_name || user?.email?.split('@')[0];
+  const billingTier = profile?.billing_tier || 'free';
 
   const handleToggle = async () => {
     const newStatus = isBotActive ? 'inactive' : 'active';
@@ -213,6 +214,10 @@ export default function Dashboard() {
             </select>
           </div>
           <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
+             <span>🎖️ Status:</span>
+             <span style={{ color: 'var(--accent-primary)', fontWeight: 800 }}>{billingTier === 'pro' ? 'ELITE' : 'STANDARD'} PLAN</span>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: profile?.website_url ? '#3b82f6' : 'rgba(255,255,255,0.3)' }}>
             <span>🌐</span>
             {profile?.website_url ? `${profile.website_url.replace(/^https?:\/\//, '')} Linked` : 'No Website Connected'}
